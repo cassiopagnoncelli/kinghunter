@@ -38,7 +38,53 @@ document.addEventListener('DOMContentLoaded', function() {
     return color === 'white' ? pieceType.toUpperCase() : pieceType;
   }
 
-  function showResults(width, height, pieces) {
+  function convertToFEN(pieces) {
+    // Initialize 8x8 board with empty squares
+    const board = Array(8).fill(null).map(() => Array(8).fill(''));
+    
+    // Place pieces on the board
+    pieces.forEach(pieceStr => {
+      const parts = pieceStr.split(' ');
+      if (parts.length === 3) {
+        const piece = parts[0];
+        const x = parseInt(parts[1]);
+        const y = parseInt(parts[2]);
+        
+        if (x >= 0 && x <= 7 && y >= 0 && y <= 7) {
+          board[y][x] = piece;
+        }
+      }
+    });
+    
+    // Convert to FEN notation (rank 8 to rank 1, which is y=7 to y=0)
+    const fenRanks = [];
+    for (let y = 7; y >= 0; y--) {
+      let rankStr = '';
+      let emptyCount = 0;
+      
+      for (let x = 0; x <= 7; x++) {
+        if (board[y][x] === '') {
+          emptyCount++;
+        } else {
+          if (emptyCount > 0) {
+            rankStr += emptyCount;
+            emptyCount = 0;
+          }
+          rankStr += board[y][x];
+        }
+      }
+      
+      if (emptyCount > 0) {
+        rankStr += emptyCount;
+      }
+      
+      fenRanks.push(rankStr);
+    }
+    
+    return fenRanks.join('/');
+  }
+
+  function showResults(width, height, pieces, color) {
     const blockSize = width / 8;
     
     // Convert pixel coordinates to board coordinates (0-7) and piece notation
@@ -49,8 +95,18 @@ document.addEventListener('DOMContentLoaded', function() {
         const pixelX = parseInt(parts[parts.length - 2]);
         const pixelY = parseInt(parts[parts.length - 1]);
         
-        const boardX = Math.round(pixelX / blockSize);
-        const boardY = Math.round(pixelY / blockSize);
+        let boardX = Math.round(pixelX / blockSize);
+        let boardY = Math.round(pixelY / blockSize);
+        
+        // Fix horizontal mirroring - Lichess coordinates are horizontally flipped
+        boardX = 7 - boardX;
+        
+        // Adjust coordinates based on board orientation
+        if (color === 'black') {
+          // When playing as black, the board is also vertically flipped
+          boardY = 7 - boardY;
+        }
+        
         const pieceNotation = convertPieceNotation(className);
         
         return `${pieceNotation} ${boardX} ${boardY}`;
@@ -58,10 +114,18 @@ document.addEventListener('DOMContentLoaded', function() {
       return piece;
     });
 
+    // Generate FEN notation
+    const fenNotation = convertToFEN(convertedPieces);
+
     dimensionsEl.innerHTML = `
       <div><strong>Board Size:</strong> ${width} × ${height} (Block Size: ${Math.round(blockSize)})</div>
+      <div><strong>Board Orientation:</strong> ${color}</div>
+      <div><strong>FEN:</strong></div>
+      <div style="font-family: monospace; font-size: 11px; word-break: break-all; margin: 5px 0; padding: 5px; background: #f5f5f5; border-radius: 3px;">
+        ${fenNotation}
+      </div>
       <div><strong>Pieces (${convertedPieces.length}):</strong></div>
-      <div style="max-height: 200px; overflow-y: auto; font-size: 12px; margin-top: 5px;">
+      <div style="max-height: 150px; overflow-y: auto; font-size: 12px; margin-top: 5px;">
         ${convertedPieces.map(piece => `<div>${piece}</div>`).join('')}
       </div>
     `;
@@ -71,7 +135,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
   function isLichessGamePage(url) {
     // Check if URL matches https://lichess.org/[game_id] format
-    const lichessGamePattern = /^https:\/\/lichess\.org\/[a-zA-Z0-9]{8,12}(?:\/.*)?$/;
+    // Handles fragments (#) and query parameters (?) after game ID
+    const lichessGamePattern = /^https:\/\/lichess\.org\/[a-zA-Z0-9]{8,12}(?:[\/\?\#].*)?$/;
     return lichessGamePattern.test(url);
   }
 
@@ -111,7 +176,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
       updateStatus('Extracting board data...', 'info');
 
-      // Inject script to find cg-container and pieces
+      // Inject script to find cg-container, pieces, and board orientation
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         function: () => {
@@ -147,9 +212,22 @@ document.addEventListener('DOMContentLoaded', function() {
             });
           }
 
+          // Determine board orientation by checking coords element
+          let color = 'unknown';
+          const coordsElement = document.querySelector('coords');
+          if (coordsElement) {
+            const coordsClass = coordsElement.getAttribute('class');
+            if (coordsClass === 'files') {
+              color = 'white';
+            } else if (coordsClass === 'files black') {
+              color = 'black';
+            }
+          }
+
           return { 
             style: style,
-            pieces: pieces
+            pieces: pieces,
+            color: color
           };
         }
       });
@@ -169,7 +247,7 @@ document.addEventListener('DOMContentLoaded', function() {
       }
 
       updateStatus('Board data extracted!', 'success');
-      showResults(dimensions.width, dimensions.height, result.pieces);
+      showResults(dimensions.width, dimensions.height, result.pieces, result.color);
 
     } catch (error) {
       updateStatus(`Error: ${error.message}`, 'error');
