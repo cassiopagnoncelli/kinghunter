@@ -103,6 +103,33 @@
     return null;
   }
 
+  // Convert pixel coordinates to board coordinates using the same logic for both pieces and squares
+  function convertPixelToBoardCoordinates(pixelX, pixelY, blockSize, boardColor) {
+    let boardX = Math.round(pixelX / blockSize);
+    let boardY = Math.round(pixelY / blockSize);
+    
+    // Files (columns) are already correct, no horizontal flip needed
+    
+    // Ranks (rows): Lichess uses Y=0 at top, but chess notation has rank 1 at bottom
+    // So we need to flip Y coordinates to get correct ranks
+    boardY = 7 - boardY;
+    
+    // Additional adjustment for board orientation
+    if (boardColor === 'black') {
+      // When playing as black, flip again to correct orientation
+      boardY = 7 - boardY;
+    }
+    
+    return { boardX, boardY };
+  }
+
+  // Convert board coordinates to chess notation
+  function boardCoordinatesToChessNotation(boardX, boardY) {
+    const file = String.fromCharCode(97 + boardX); // 97 is 'a'
+    const rank = boardY + 1;
+    return `${file}${rank}`;
+  }
+
   // Extract complete board data
   function extractBoardData() {
     const cgContainer = document.querySelector('cg-container');
@@ -123,9 +150,10 @@
       return null;
     }
 
-    // Find cg-board and extract pieces
+    // Find cg-board and extract pieces and last-move squares
     const cgBoard = document.querySelector('cg-board');
     const pieces = [];
+    const lastMoveSquares = [];
     
     if (cgBoard) {
       const pieceElements = cgBoard.querySelectorAll('piece');
@@ -143,6 +171,49 @@
           }
         }
       });
+      
+      // Extract last-move squares - try multiple selectors
+      let lastMoveElements = cgBoard.querySelectorAll('square.last-move');
+      
+      // If no elements found with .last-move, try other selectors
+      if (lastMoveElements.length === 0) {
+        lastMoveElements = cgBoard.querySelectorAll('square[class*="last"]');
+      }
+      if (lastMoveElements.length === 0) {
+        lastMoveElements = cgBoard.querySelectorAll('square[class*="move"]');
+      }
+      if (lastMoveElements.length === 0) {
+        lastMoveElements = cgBoard.querySelectorAll('square[class*="highlight"]');
+      }
+      
+      console.log('Lichess Board Size Extractor: Found last-move squares:', lastMoveElements.length);
+      
+      lastMoveElements.forEach((square, index) => {
+        const classAttr = square.getAttribute('class');
+        const styleAttr = square.getAttribute('style');
+        console.log(`Lichess Board Size Extractor: Last-move square ${index}:`, classAttr, styleAttr);
+        
+        if (classAttr && styleAttr) {
+          // Extract translate values from transform
+          const translateMatch = styleAttr.match(/translate\((\d+)px,\s*(\d+)px\)/);
+          if (translateMatch) {
+            const x = parseInt(translateMatch[1]);
+            const y = parseInt(translateMatch[2]);
+            lastMoveSquares.push({
+              class: classAttr,
+              x: x,
+              y: y,
+              raw: `${classAttr} ${x} ${y}`
+            });
+          }
+        }
+      });
+      
+      // Debug: log all squares to understand the structure
+      const allSquares = cgBoard.querySelectorAll('square');
+      console.log('Lichess Board Size Extractor: Total squares found:', allSquares.length);
+      const squareClasses = Array.from(allSquares).map(sq => sq.getAttribute('class')).filter(Boolean);
+      console.log('Lichess Board Size Extractor: All square classes:', [...new Set(squareClasses)]);
     }
 
     // Determine board orientation by checking coords element
@@ -167,24 +238,51 @@
         const pixelX = parseInt(parts[parts.length - 2]);
         const pixelY = parseInt(parts[parts.length - 1]);
         
-        let boardX = Math.round(pixelX / blockSize);
-        let boardY = Math.round(pixelY / blockSize);
-        
-        // Fix horizontal mirroring - Lichess coordinates are horizontally flipped
-        boardX = 7 - boardX;
-        
-        // Adjust coordinates based on board orientation
-        if (color === 'black') {
-          // When playing as black, the board is also vertically flipped
-          boardY = 7 - boardY;
-        }
-        
+        const { boardX, boardY } = convertPixelToBoardCoordinates(pixelX, pixelY, blockSize, color);
         const pieceNotation = convertPieceNotation(className);
         
         return `${pieceNotation} ${boardX} ${boardY}`;
       }
       return piece;
     });
+
+    // Convert last-move squares to chess notation using the exact same logic as pieces
+    let lastMoveInfo = null;
+    if (lastMoveSquares.length >= 2) {
+      console.log('Lichess Board Size Extractor: Processing last move squares:', lastMoveSquares);
+      
+      // Convert squares to chess notation using identical coordinate conversion as pieces
+      const convertedSquares = lastMoveSquares.map(square => {
+        const pixelX = square.x;
+        const pixelY = square.y;
+        
+        const { boardX, boardY } = convertPixelToBoardCoordinates(pixelX, pixelY, blockSize, color);
+        const chessNotation = boardCoordinatesToChessNotation(boardX, boardY);
+        
+        console.log(`Lichess Board Size Extractor: Square pixel(${pixelX},${pixelY}) -> board(${boardX},${boardY}) -> ${chessNotation}`);
+        
+        return chessNotation;
+      });
+      
+      // Simply show the squares in order: to ← from (inverted)
+      if (convertedSquares.length >= 2) {
+        lastMoveInfo = `${convertedSquares[1]} → ${convertedSquares[0]}`;
+        console.log('Lichess Board Size Extractor: Last move detected:', lastMoveInfo);
+      }
+    } else if (lastMoveSquares.length === 1) {
+      // Handle case with only one highlighted square
+      const square = lastMoveSquares[0];
+      const pixelX = square.x;
+      const pixelY = square.y;
+      
+      const { boardX, boardY } = convertPixelToBoardCoordinates(pixelX, pixelY, blockSize, color);
+      const chessNotation = boardCoordinatesToChessNotation(boardX, boardY);
+      
+      lastMoveInfo = chessNotation;
+      console.log('Lichess Board Size Extractor: Single square highlighted:', lastMoveInfo);
+    } else {
+      console.log('Lichess Board Size Extractor: No last move squares found');
+    }
 
     // Generate FEN notation
     const fenNotation = convertToFEN(convertedPieces);
@@ -195,6 +293,7 @@
       blockSize: Math.round(blockSize),
       color: color,
       pieces: convertedPieces,
+      last_move: lastMoveInfo,
       fen: fenNotation,
       timestamp: Date.now()
     };
@@ -209,13 +308,44 @@
     if (newBoardData) {
       currentBoardData = newBoardData;
       
-      // Notify popup if it's open
-      chrome.runtime.sendMessage({
-        type: 'BOARD_DATA_UPDATED',
-        data: currentBoardData
-      }).catch(() => {
-        // Popup might not be open, ignore error
-      });
+      // Notify popup if it's open - handle extension context invalidation
+      try {
+        chrome.runtime.sendMessage({
+          type: 'BOARD_DATA_UPDATED',
+          data: currentBoardData
+        }).catch((error) => {
+          // Check if it's extension context invalidated error
+          if (error.message && error.message.includes('Extension context invalidated')) {
+            console.log('Lichess Board Size Extractor: Extension context invalidated, stopping observers');
+            // Clean up observers when extension context is invalidated
+            if (boardObserver) {
+              boardObserver.disconnect();
+              boardObserver = null;
+            }
+            if (periodicCheck) {
+              clearInterval(periodicCheck);
+              periodicCheck = null;
+            }
+            return;
+          }
+          // For other errors (like popup not open), just ignore
+          console.log('Lichess Board Size Extractor: Message send failed (likely popup not open)');
+        });
+      } catch (error) {
+        // Handle synchronous errors (like when chrome.runtime is undefined)
+        if (error.message && error.message.includes('Extension context invalidated')) {
+          console.log('Lichess Board Size Extractor: Extension context invalidated, stopping observers');
+          // Clean up observers
+          if (boardObserver) {
+            boardObserver.disconnect();
+            boardObserver = null;
+          }
+          if (periodicCheck) {
+            clearInterval(periodicCheck);
+            periodicCheck = null;
+          }
+        }
+      }
     }
   }
 
@@ -240,27 +370,35 @@
       let shouldUpdate = false;
       
       mutations.forEach(function(mutation) {
-        // Check for added/removed piece elements
+        // Check for added/removed piece or square elements
         if (mutation.type === 'childList') {
           const addedPieces = Array.from(mutation.addedNodes).some(node => 
-            node.nodeType === Node.ELEMENT_NODE && node.tagName === 'PIECE'
+            node.nodeType === Node.ELEMENT_NODE && (node.tagName === 'PIECE' || node.tagName === 'SQUARE')
           );
           const removedPieces = Array.from(mutation.removedNodes).some(node => 
-            node.nodeType === Node.ELEMENT_NODE && node.tagName === 'PIECE'
+            node.nodeType === Node.ELEMENT_NODE && (node.tagName === 'PIECE' || node.tagName === 'SQUARE')
           );
           
           if (addedPieces || removedPieces) {
             shouldUpdate = true;
-            console.log('Lichess Board Size Extractor: Pieces added/removed detected');
+            console.log('Lichess Board Size Extractor: Pieces/squares added/removed detected');
           }
         }
         
-        // Check for style changes on piece elements (movement)
+        // Check for style changes on piece or square elements (movement)
         if (mutation.type === 'attributes' && 
             mutation.attributeName === 'style' &&
-            mutation.target.tagName === 'PIECE') {
+            (mutation.target.tagName === 'PIECE' || mutation.target.tagName === 'SQUARE')) {
           shouldUpdate = true;
-          console.log('Lichess Board Size Extractor: Piece movement detected');
+          console.log('Lichess Board Size Extractor: Piece/square movement detected');
+        }
+        
+        // Check for class changes on square elements (last-move highlighting)
+        if (mutation.type === 'attributes' && 
+            mutation.attributeName === 'class' &&
+            mutation.target.tagName === 'SQUARE') {
+          shouldUpdate = true;
+          console.log('Lichess Board Size Extractor: Square class change detected');
         }
       });
       
@@ -277,7 +415,7 @@
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['style']
+      attributeFilter: ['style', 'class']
     });
 
     console.log('Lichess Board Size Extractor: Observer started, doing initial extraction...');
@@ -316,14 +454,36 @@
     }
   }
 
-  // Handle messages from popup
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    console.log('Lichess Board Size Extractor: Received message', request);
-    if (request.type === 'GET_BOARD_DATA') {
-      console.log('Lichess Board Size Extractor: Sending current data', currentBoardData);
-      sendResponse({ data: currentBoardData });
+  // Handle messages from popup with error handling
+  function handleMessage(request, sender, sendResponse) {
+    try {
+      console.log('Lichess Board Size Extractor: Received message', request);
+      if (request.type === 'GET_BOARD_DATA') {
+        console.log('Lichess Board Size Extractor: Sending current data', currentBoardData);
+        sendResponse({ data: currentBoardData });
+      }
+    } catch (error) {
+      if (error.message && error.message.includes('Extension context invalidated')) {
+        console.log('Lichess Board Size Extractor: Extension context invalidated in message handler');
+        // Clean up observers
+        if (boardObserver) {
+          boardObserver.disconnect();
+          boardObserver = null;
+        }
+        if (periodicCheck) {
+          clearInterval(periodicCheck);
+          periodicCheck = null;
+        }
+      }
     }
-  });
+  }
+
+  // Add message listener with error protection
+  try {
+    chrome.runtime.onMessage.addListener(handleMessage);
+  } catch (error) {
+    console.log('Lichess Board Size Extractor: Could not add message listener:', error);
+  }
 
   // Run when DOM is loaded
   if (document.readyState === 'loading') {

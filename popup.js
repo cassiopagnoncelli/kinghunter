@@ -13,11 +13,19 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
+    let lastMoveSection = `
+      <div><strong>Last Move:</strong></div>
+      <div style="font-family: monospace; font-size: 12px; margin: 5px 0; padding: 5px; background: #e8f4fd; border-radius: 3px;">
+        ${boardData.last_move || 'No last move detected'}
+      </div>
+    `;
+
     dimensionsEl.innerHTML = `
       <div><strong>FEN:</strong></div>
       <div style="font-family: monospace; font-size: 11px; word-break: break-all; margin: 5px 0; padding: 5px; background: #f5f5f5; border-radius: 3px;">
         ${boardData.fen}
       </div>
+      ${lastMoveSection}
       <div><strong>Pieces (${boardData.pieces.length}):</strong></div>
       <div style="max-height: 150px; overflow-y: auto; font-size: 12px; margin-top: 5px;">
         ${boardData.pieces.map(piece => `<div>${piece}</div>`).join('')}
@@ -106,9 +114,10 @@ document.addEventListener('DOMContentLoaded', function() {
           const width = parseInt(widthMatch[1]);
           const height = parseInt(heightMatch[1]);
 
-          // Find pieces
+          // Find pieces and last-move squares
           const cgBoard = document.querySelector('cg-board');
           const pieces = [];
+          const lastMoveSquares = [];
           
           if (cgBoard) {
             const pieceElements = cgBoard.querySelectorAll('piece');
@@ -122,6 +131,39 @@ document.addEventListener('DOMContentLoaded', function() {
                   const x = translateMatch[1];
                   const y = translateMatch[2];
                   pieces.push(`${classAttr} ${x} ${y}`);
+                }
+              }
+            });
+            
+            // Extract last-move squares - try multiple selectors
+            let lastMoveElements = cgBoard.querySelectorAll('square.last-move');
+            
+            // If no elements found with .last-move, try other selectors
+            if (lastMoveElements.length === 0) {
+              lastMoveElements = cgBoard.querySelectorAll('square[class*="last"]');
+            }
+            if (lastMoveElements.length === 0) {
+              lastMoveElements = cgBoard.querySelectorAll('square[class*="move"]');
+            }
+            if (lastMoveElements.length === 0) {
+              lastMoveElements = cgBoard.querySelectorAll('square[class*="highlight"]');
+            }
+            
+            lastMoveElements.forEach((square, index) => {
+              const classAttr = square.getAttribute('class');
+              const styleAttr = square.getAttribute('style');
+              
+              if (classAttr && styleAttr) {
+                const translateMatch = styleAttr.match(/translate\((\d+)px,\s*(\d+)px\)/);
+                if (translateMatch) {
+                  const x = parseInt(translateMatch[1]);
+                  const y = parseInt(translateMatch[2]);
+                  lastMoveSquares.push({
+                    class: classAttr,
+                    x: x,
+                    y: y,
+                    raw: `${classAttr} ${x} ${y}`
+                  });
                 }
               }
             });
@@ -143,6 +185,7 @@ document.addEventListener('DOMContentLoaded', function() {
             width: width,
             height: height,
             pieces: pieces,
+            lastMoveSquares: lastMoveSquares,
             color: color,
             timestamp: Date.now(),
             method: 'fallback'
@@ -168,11 +211,38 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
+  // Convert pixel coordinates to board coordinates using the same logic for both pieces and squares
+  function convertPixelToBoardCoordinates(pixelX, pixelY, blockSize, boardColor) {
+    let boardX = Math.round(pixelX / blockSize);
+    let boardY = Math.round(pixelY / blockSize);
+    
+    // Files (columns) are already correct, no horizontal flip needed
+    
+    // Ranks (rows): Lichess uses Y=0 at top, but chess notation has rank 1 at bottom
+    // So we need to flip Y coordinates to get correct ranks
+    boardY = 7 - boardY;
+    
+    // Additional adjustment for board orientation
+    if (boardColor === 'black') {
+      // When playing as black, flip again to correct orientation
+      boardY = 7 - boardY;
+    }
+    
+    return { boardX, boardY };
+  }
+
+  // Convert board coordinates to chess notation
+  function boardCoordinatesToChessNotation(boardX, boardY) {
+    const file = String.fromCharCode(97 + boardX); // 97 is 'a'
+    const rank = boardY + 1;
+    return `${file}${rank}`;
+  }
+
   // Process raw board data (similar to content script)
   function processBoardData(rawData) {
     const blockSize = rawData.width / 8;
     
-    // Convert pieces
+    // Convert pieces using shared coordinate conversion logic
     const convertedPieces = rawData.pieces.map(piece => {
       const parts = piece.split(' ');
       if (parts.length >= 4) {
@@ -180,21 +250,51 @@ document.addEventListener('DOMContentLoaded', function() {
         const pixelX = parseInt(parts[parts.length - 2]);
         const pixelY = parseInt(parts[parts.length - 1]);
         
-        let boardX = Math.round(pixelX / blockSize);
-        let boardY = Math.round(pixelY / blockSize);
-        
-        boardX = 7 - boardX; // Fix horizontal mirroring
-        
-        if (rawData.color === 'black') {
-          boardY = 7 - boardY; // Fix vertical mirroring for black
-        }
-        
+        const { boardX, boardY } = convertPixelToBoardCoordinates(pixelX, pixelY, blockSize, rawData.color);
         const pieceNotation = convertPieceNotation(className);
         
         return `${pieceNotation} ${boardX} ${boardY}`;
       }
       return piece;
     });
+
+    // Convert last-move squares using the exact same logic as pieces
+    let lastMoveInfo = null;
+    if (rawData.lastMoveSquares && rawData.lastMoveSquares.length >= 2) {
+      console.log('Popup: Processing last move squares:', rawData.lastMoveSquares);
+      
+      // Convert squares to chess notation using identical coordinate conversion as pieces
+      const convertedSquares = rawData.lastMoveSquares.map(square => {
+        const pixelX = square.x;
+        const pixelY = square.y;
+        
+        const { boardX, boardY } = convertPixelToBoardCoordinates(pixelX, pixelY, blockSize, rawData.color);
+        const chessNotation = boardCoordinatesToChessNotation(boardX, boardY);
+        
+        console.log(`Popup: Square pixel(${pixelX},${pixelY}) -> board(${boardX},${boardY}) -> ${chessNotation}`);
+        
+        return chessNotation;
+      });
+      
+      // Simply show the squares in order: to ← from (inverted)
+      if (convertedSquares.length >= 2) {
+        lastMoveInfo = `${convertedSquares[1]} → ${convertedSquares[0]}`;
+        console.log('Popup: Last move detected:', lastMoveInfo);
+      }
+    } else if (rawData.lastMoveSquares && rawData.lastMoveSquares.length === 1) {
+      // Handle case with only one highlighted square
+      const square = rawData.lastMoveSquares[0];
+      const pixelX = square.x;
+      const pixelY = square.y;
+      
+      const { boardX, boardY } = convertPixelToBoardCoordinates(pixelX, pixelY, blockSize, rawData.color);
+      const chessNotation = boardCoordinatesToChessNotation(boardX, boardY);
+      
+      lastMoveInfo = chessNotation;
+      console.log('Popup: Single square highlighted:', lastMoveInfo);
+    } else {
+      console.log('Popup: No last move squares found');
+    }
 
     // Generate FEN
     const fen = convertToFEN(convertedPieces);
@@ -205,6 +305,7 @@ document.addEventListener('DOMContentLoaded', function() {
       blockSize: Math.round(blockSize),
       color: rawData.color,
       pieces: convertedPieces,
+      last_move: lastMoveInfo,
       fen: fen,
       timestamp: rawData.timestamp
     };
