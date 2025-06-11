@@ -6,6 +6,7 @@
 
   let boardObserver = null;
   let currentBoardData = null;
+  let previousPiecePositions = new Map();
 
   // Check if current page is a Lichess game page
   function isLichessGamePage() {
@@ -130,6 +131,78 @@
     return `${file}${rank}`;
   }
 
+  // Detect move by comparing piece positions
+  function detectMoveFromPiecePositions(currentPieces) {
+    // Create position maps for comparison
+    const currentPositions = new Map();
+    const currentPiecesByPosition = new Map();
+    
+    // Process current pieces
+    currentPieces.forEach(pieceStr => {
+      const parts = pieceStr.split(' ');
+      if (parts.length === 3) {
+        const piece = parts[0];
+        const x = parseInt(parts[1]);
+        const y = parseInt(parts[2]);
+        const position = `${x},${y}`;
+        const notation = boardCoordinatesToChessNotation(x, y);
+        
+        currentPositions.set(piece + position, { piece, x, y, notation });
+        currentPiecesByPosition.set(position, { piece, x, y, notation });
+      }
+    });
+
+    // If no previous positions, store current and return
+    if (previousPiecePositions.size === 0) {
+      previousPiecePositions.clear();
+      currentPositions.forEach((value, key) => {
+        previousPiecePositions.set(key, value);
+      });
+      return null;
+    }
+
+    // Find differences
+    let movedPiece = null;
+    let fromSquare = null;
+    let toSquare = null;
+
+    // Look for pieces that changed position
+    for (const [piecePos, current] of currentPositions) {
+      if (!previousPiecePositions.has(piecePos)) {
+        // This piece-position combination is new
+        // Find where this piece was before
+        const piece = current.piece;
+        let foundPrevious = false;
+        
+        for (const [prevPiecePos, previous] of previousPiecePositions) {
+          if (previous.piece === piece && !currentPositions.has(prevPiecePos)) {
+            // Found the piece's previous position
+            movedPiece = piece;
+            fromSquare = previous.notation;
+            toSquare = current.notation;
+            foundPrevious = true;
+            break;
+          }
+        }
+        
+        if (foundPrevious) break;
+      }
+    }
+
+    // Update previous positions for next comparison
+    previousPiecePositions.clear();
+    currentPositions.forEach((value, key) => {
+      previousPiecePositions.set(key, value);
+    });
+
+    // Return move information
+    if (movedPiece && fromSquare && toSquare && fromSquare !== toSquare) {
+      return `${toSquare} → ${fromSquare}`; // Inverted order as requested
+    }
+
+    return null;
+  }
+
   // Extract complete board data
   function extractBoardData() {
     const cgContainer = document.querySelector('cg-container');
@@ -246,8 +319,9 @@
       return piece;
     });
 
-    // Convert last-move squares to chess notation using the exact same logic as pieces
+    // Detect last move - try highlighted squares first, then piece position comparison
     let lastMoveInfo = null;
+    
     if (lastMoveSquares.length >= 2) {
       console.log('Lichess Board Size Extractor: Processing last move squares:', lastMoveSquares);
       
@@ -267,7 +341,7 @@
       // Simply show the squares in order: to ← from (inverted)
       if (convertedSquares.length >= 2) {
         lastMoveInfo = `${convertedSquares[1]} → ${convertedSquares[0]}`;
-        console.log('Lichess Board Size Extractor: Last move detected:', lastMoveInfo);
+        console.log('Lichess Board Size Extractor: Last move detected from squares:', lastMoveInfo);
       }
     } else if (lastMoveSquares.length === 1) {
       // Handle case with only one highlighted square
@@ -280,8 +354,17 @@
       
       lastMoveInfo = chessNotation;
       console.log('Lichess Board Size Extractor: Single square highlighted:', lastMoveInfo);
-    } else {
-      console.log('Lichess Board Size Extractor: No last move squares found');
+    }
+    
+    // If no move detected from highlighted squares, try piece position comparison
+    if (!lastMoveInfo) {
+      console.log('Lichess Board Size Extractor: No highlighted squares found, trying piece position comparison');
+      lastMoveInfo = detectMoveFromPiecePositions(convertedPieces);
+      if (lastMoveInfo) {
+        console.log('Lichess Board Size Extractor: Last move detected from piece positions:', lastMoveInfo);
+      } else {
+        console.log('Lichess Board Size Extractor: No move detected from piece positions either');
+      }
     }
 
     // Generate FEN notation
