@@ -1,26 +1,219 @@
 document.addEventListener('DOMContentLoaded', function() {
   const statusEl = document.getElementById('status');
   const dimensionsEl = document.getElementById('dimensions');
-  const extractBtn = document.getElementById('extractBtn');
 
   function updateStatus(message, type = 'info') {
     statusEl.textContent = message;
     statusEl.className = `status ${type}`;
   }
 
-  function showDimensions(width, height) {
-    dimensionsEl.textContent = `${width} × ${height}`;
+  function showResults(boardData) {
+    if (!boardData) {
+      dimensionsEl.style.display = 'none';
+      return;
+    }
+
+    dimensionsEl.innerHTML = `
+      <div><strong>FEN:</strong></div>
+      <div style="font-family: monospace; font-size: 11px; word-break: break-all; margin: 5px 0; padding: 5px; background: #f5f5f5; border-radius: 3px;">
+        ${boardData.fen}
+      </div>
+      <div><strong>Pieces (${boardData.pieces.length}):</strong></div>
+      <div style="max-height: 150px; overflow-y: auto; font-size: 12px; margin-top: 5px;">
+        ${boardData.pieces.map(piece => `<div>${piece}</div>`).join('')}
+      </div>
+    `;
     dimensionsEl.style.display = 'block';
+  }
+
+  function isLichessGamePage(url) {
+    // Check if URL matches https://lichess.org/[game_id] format
+    // Handles fragments (#) and query parameters (?) after game ID
+    const lichessGamePattern = /^https:\/\/lichess\.org\/[a-zA-Z0-9]{8,12}(?:[\/\?\#].*)?$/;
+    return lichessGamePattern.test(url);
+  }
+
+  async function requestBoardData() {
+    try {
+      // Get current tab
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      
+      if (!tab.url) {
+        updateStatus('Cannot access current page', 'error');
+        return;
+      }
+
+      // Check if it's a Lichess game page
+      if (!isLichessGamePage(tab.url)) {
+        updateStatus('Not on a Lichess game page', 'error');
+        return;
+      }
+
+      updateStatus('Getting board data...', 'info');
+
+      // Request board data from content script
+      try {
+        const response = await chrome.tabs.sendMessage(tab.id, { type: 'GET_BOARD_DATA' });
+        
+        if (response && response.data) {
+          updateStatus('Ready', 'success');
+          showResults(response.data);
+        } else {
+          updateStatus('Loading...', 'info');
+          // Try to force extraction using script injection as fallback
+          tryFallbackExtraction();
+        }
+      } catch (messageError) {
+        console.log('Popup: Message failed, trying fallback extraction...', messageError);
+        updateStatus('Loading...', 'info');
+        tryFallbackExtraction();
+      }
+
+    } catch (error) {
+      updateStatus('Error', 'error');
+      console.error('Popup: Error in requestBoardData:', error);
+    }
+  }
+
+  // Fallback method using script injection (like the old button method)
+  async function tryFallbackExtraction() {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      
+      // Inject script to extract data directly
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        function: () => {
+          // This function runs in the page context
+          const cgContainer = document.querySelector('cg-container');
+          if (!cgContainer) {
+            return { error: 'cg-container not found' };
+          }
+
+          const style = cgContainer.getAttribute('style');
+          if (!style) {
+            return { error: 'No style attribute found on cg-container' };
+          }
+
+          // Extract dimensions
+          const widthMatch = style.match(/width:\s*(\d+)px/);
+          const heightMatch = style.match(/height:\s*(\d+)px/);
+          
+          if (!widthMatch || !heightMatch) {
+            return { error: 'Could not extract dimensions from style: ' + style };
+          }
+
+          const width = parseInt(widthMatch[1]);
+          const height = parseInt(heightMatch[1]);
+
+          // Find pieces
+          const cgBoard = document.querySelector('cg-board');
+          const pieces = [];
+          
+          if (cgBoard) {
+            const pieceElements = cgBoard.querySelectorAll('piece');
+            pieceElements.forEach(piece => {
+              const classAttr = piece.getAttribute('class');
+              const styleAttr = piece.getAttribute('style');
+              
+              if (classAttr && styleAttr) {
+                const translateMatch = styleAttr.match(/translate\((\d+)px,\s*(\d+)px\)/);
+                if (translateMatch) {
+                  const x = translateMatch[1];
+                  const y = translateMatch[2];
+                  pieces.push(`${classAttr} ${x} ${y}`);
+                }
+              }
+            });
+          }
+
+          // Get board orientation
+          let color = 'unknown';
+          const coordsElement = document.querySelector('coords');
+          if (coordsElement) {
+            const coordsClass = coordsElement.getAttribute('class');
+            if (coordsClass === 'files') {
+              color = 'white';
+            } else if (coordsClass === 'files black') {
+              color = 'black';
+            }
+          }
+
+          return { 
+            width: width,
+            height: height,
+            pieces: pieces,
+            color: color,
+            timestamp: Date.now(),
+            method: 'fallback'
+          };
+        }
+      });
+
+      const result = results[0].result;
+
+      if (result.error) {
+        updateStatus('No board found', 'error');
+        return;
+      }
+
+      // Process the data (similar to the content script)
+      const boardData = processBoardData(result);
+      updateStatus('Ready', 'success');
+      showResults(boardData);
+
+    } catch (error) {
+      updateStatus('Error', 'error');
+      console.error('Popup: Fallback extraction error:', error);
+    }
+  }
+
+  // Process raw board data (similar to content script)
+  function processBoardData(rawData) {
+    const blockSize = rawData.width / 8;
+    
+    // Convert pieces
+    const convertedPieces = rawData.pieces.map(piece => {
+      const parts = piece.split(' ');
+      if (parts.length >= 4) {
+        const className = parts.slice(0, -2).join(' ');
+        const pixelX = parseInt(parts[parts.length - 2]);
+        const pixelY = parseInt(parts[parts.length - 1]);
+        
+        let boardX = Math.round(pixelX / blockSize);
+        let boardY = Math.round(pixelY / blockSize);
+        
+        boardX = 7 - boardX; // Fix horizontal mirroring
+        
+        if (rawData.color === 'black') {
+          boardY = 7 - boardY; // Fix vertical mirroring for black
+        }
+        
+        const pieceNotation = convertPieceNotation(className);
+        
+        return `${pieceNotation} ${boardX} ${boardY}`;
+      }
+      return piece;
+    });
+
+    // Generate FEN
+    const fen = convertToFEN(convertedPieces);
+
+    return {
+      width: rawData.width,
+      height: rawData.height,
+      blockSize: Math.round(blockSize),
+      color: rawData.color,
+      pieces: convertedPieces,
+      fen: fen,
+      timestamp: rawData.timestamp
+    };
   }
 
   function convertPieceNotation(className) {
     const pieceMap = {
-      'knight': 'n',
-      'pawn': 'p', 
-      'king': 'k',
-      'queen': 'q',
-      'rook': 'r',
-      'bishop': 'b'
+      'knight': 'n', 'pawn': 'p', 'king': 'k',
+      'queen': 'q', 'rook': 'r', 'bishop': 'b'
     };
     
     const parts = className.toLowerCase().split(' ');
@@ -34,15 +227,12 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     }
     
-    // Uppercase for white, lowercase for black
     return color === 'white' ? pieceType.toUpperCase() : pieceType;
   }
 
   function convertToFEN(pieces) {
-    // Initialize 8x8 board with empty squares
     const board = Array(8).fill(null).map(() => Array(8).fill(''));
     
-    // Place pieces on the board
     pieces.forEach(pieceStr => {
       const parts = pieceStr.split(' ');
       if (parts.length === 3) {
@@ -56,7 +246,6 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
     
-    // Convert to FEN notation (rank 8 to rank 1, which is y=7 to y=0)
     const fenRanks = [];
     for (let y = 7; y >= 0; y--) {
       let rankStr = '';
@@ -84,175 +273,12 @@ document.addEventListener('DOMContentLoaded', function() {
     return fenRanks.join('/');
   }
 
-  function showResults(width, height, pieces, color) {
-    const blockSize = width / 8;
-    
-    // Convert pixel coordinates to board coordinates (0-7) and piece notation
-    const convertedPieces = pieces.map(piece => {
-      const parts = piece.split(' ');
-      if (parts.length >= 4) {
-        const className = parts.slice(0, -2).join(' '); // Everything except last 2 numbers
-        const pixelX = parseInt(parts[parts.length - 2]);
-        const pixelY = parseInt(parts[parts.length - 1]);
-        
-        let boardX = Math.round(pixelX / blockSize);
-        let boardY = Math.round(pixelY / blockSize);
-        
-        // Fix horizontal mirroring - Lichess coordinates are horizontally flipped
-        boardX = 7 - boardX;
-        
-        // Adjust coordinates based on board orientation
-        if (color === 'black') {
-          // When playing as black, the board is also vertically flipped
-          boardY = 7 - boardY;
-        }
-        
-        const pieceNotation = convertPieceNotation(className);
-        
-        return `${pieceNotation} ${boardX} ${boardY}`;
-      }
-      return piece;
-    });
-
-    // Generate FEN notation
-    const fenNotation = convertToFEN(convertedPieces);
-
-    dimensionsEl.innerHTML = `
-      <div><strong>Board Size:</strong> ${width} × ${height} (Block Size: ${Math.round(blockSize)})</div>
-      <div><strong>Board Orientation:</strong> ${color}</div>
-      <div><strong>FEN:</strong></div>
-      <div style="font-family: monospace; font-size: 11px; word-break: break-all; margin: 5px 0; padding: 5px; background: #f5f5f5; border-radius: 3px;">
-        ${fenNotation}
-      </div>
-      <div><strong>Pieces (${convertedPieces.length}):</strong></div>
-      <div style="max-height: 150px; overflow-y: auto; font-size: 12px; margin-top: 5px;">
-        ${convertedPieces.map(piece => `<div>${piece}</div>`).join('')}
-      </div>
-    `;
-    dimensionsEl.style.display = 'block';
-  }
-
-
-  function isLichessGamePage(url) {
-    // Check if URL matches https://lichess.org/[game_id] format
-    // Handles fragments (#) and query parameters (?) after game ID
-    const lichessGamePattern = /^https:\/\/lichess\.org\/[a-zA-Z0-9]{8,12}(?:[\/\?\#].*)?$/;
-    return lichessGamePattern.test(url);
-  }
-
-  function extractDimensions(styleStr) {
-    if (!styleStr) return null;
-    
-    const widthMatch = styleStr.match(/width:\s*(\d+)px/);
-    const heightMatch = styleStr.match(/height:\s*(\d+)px/);
-    
-    if (widthMatch && heightMatch) {
-      return {
-        width: parseInt(widthMatch[1]),
-        height: parseInt(heightMatch[1])
-      };
-    }
-    return null;
-  }
-
-  extractBtn.addEventListener('click', async function() {
-    try {
-      extractBtn.disabled = true;
-      updateStatus('Checking page...', 'info');
-
-      // Get current tab
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      
-      if (!tab.url) {
-        updateStatus('Cannot access current page', 'error');
-        return;
-      }
-
-      // Check if it's a Lichess game page
-      if (!isLichessGamePage(tab.url)) {
-        updateStatus('Not a Lichess game page', 'error');
-        return;
-      }
-
-      updateStatus('Extracting board data...', 'info');
-
-      // Inject script to find cg-container, pieces, and board orientation
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        function: () => {
-          const cgContainer = document.querySelector('cg-container');
-          if (!cgContainer) {
-            return { error: 'cg-container not found' };
-          }
-
-          const style = cgContainer.getAttribute('style');
-          if (!style) {
-            return { error: 'No style attribute found' };
-          }
-
-          // Find cg-board and extract pieces
-          const cgBoard = document.querySelector('cg-board');
-          const pieces = [];
-          
-          if (cgBoard) {
-            const pieceElements = cgBoard.querySelectorAll('piece');
-            pieceElements.forEach(piece => {
-              const classAttr = piece.getAttribute('class');
-              const styleAttr = piece.getAttribute('style');
-              
-              if (classAttr && styleAttr) {
-                // Extract translate values from transform
-                const translateMatch = styleAttr.match(/translate\((\d+)px,\s*(\d+)px\)/);
-                if (translateMatch) {
-                  const x = translateMatch[1];
-                  const y = translateMatch[2];
-                  pieces.push(`${classAttr} ${x} ${y}`);
-                }
-              }
-            });
-          }
-
-          // Determine board orientation by checking coords element
-          let color = 'unknown';
-          const coordsElement = document.querySelector('coords');
-          if (coordsElement) {
-            const coordsClass = coordsElement.getAttribute('class');
-            if (coordsClass === 'files') {
-              color = 'white';
-            } else if (coordsClass === 'files black') {
-              color = 'black';
-            }
-          }
-
-          return { 
-            style: style,
-            pieces: pieces,
-            color: color
-          };
-        }
-      });
-
-      const result = results[0].result;
-
-      if (result.error) {
-        updateStatus(result.error, 'error');
-        return;
-      }
-
-      const dimensions = extractDimensions(result.style);
-      
-      if (!dimensions) {
-        updateStatus('Could not extract width/height from style', 'error');
-        return;
-      }
-
-      updateStatus('Board data extracted!', 'success');
-      showResults(dimensions.width, dimensions.height, result.pieces, result.color);
-
-    } catch (error) {
-      updateStatus(`Error: ${error.message}`, 'error');
-    } finally {
-      extractBtn.disabled = false;
+  // Listen for board data updates from content script
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.type === 'BOARD_DATA_UPDATED') {
+      console.log('Popup: Received board data update', request.data);
+      updateStatus('Ready', 'success');
+      showResults(request.data);
     }
   });
 
@@ -260,6 +286,7 @@ document.addEventListener('DOMContentLoaded', function() {
   chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
     if (tabs[0] && tabs[0].url && isLichessGamePage(tabs[0].url)) {
       updateStatus('Lichess game page detected', 'success');
+      requestBoardData();
     } else {
       updateStatus('Not on a Lichess game page', 'error');
     }
