@@ -273,12 +273,77 @@ document.addEventListener('DOMContentLoaded', function() {
         
         console.log(`Popup: Square pixel(${pixelX},${pixelY}) -> board(${boardX},${boardY}) -> ${chessNotation}`);
         
-        return chessNotation;
+        return { notation: chessNotation, boardX, boardY };
       });
       
-      // Simply show the squares in order: to ← from (inverted)
+      // Find piece on highlighted squares and format as [piece] [source] [destination]
       if (convertedSquares.length >= 2) {
-        lastMoveInfo = `${convertedSquares[1]} → ${convertedSquares[0]}`;
+        const square1 = convertedSquares[0];
+        const square2 = convertedSquares[1];
+        
+        console.log('Popup: Checking squares:', square1, square2);
+        console.log('Popup: All pieces:', convertedPieces);
+        
+        // Look for pieces on both squares to determine which is origin and which is destination
+        let piece1 = null;
+        let piece2 = null;
+        
+        for (const pieceStr of convertedPieces) {
+          const parts = pieceStr.split(' ');
+          if (parts.length === 3) {
+            const piece = parts[0];
+            const pieceX = parseInt(parts[1]);
+            const pieceY = parseInt(parts[2]);
+            
+            // Check if piece is on square1
+            if (pieceX === square1.boardX && pieceY === square1.boardY) {
+              piece1 = piece;
+              console.log(`Popup: Found piece ${piece} on square1 ${square1.notation}`);
+            }
+            // Check if piece is on square2
+            if (pieceX === square2.boardX && pieceY === square2.boardY) {
+              piece2 = piece;
+              console.log(`Popup: Found piece ${piece} on square2 ${square2.notation}`);
+            }
+          }
+        }
+        
+        // Determine move based on which square has the piece (destination has piece after move)
+        let movedPiece = null;
+        let fromSquare = null;
+        let toSquare = null;
+        
+        if (piece1 && !piece2) {
+          // Piece is on square1, so square2 -> square1
+          movedPiece = piece1;
+          fromSquare = square2.notation;
+          toSquare = square1.notation;
+        } else if (piece2 && !piece1) {
+          // Piece is on square2, so square1 -> square2
+          movedPiece = piece2;
+          fromSquare = square1.notation;
+          toSquare = square2.notation;
+        } else if (piece1 && piece2) {
+          // Both squares have pieces - use the piece that's different or first one found
+          movedPiece = piece2; // Assume square2 is destination
+          fromSquare = square1.notation;
+          toSquare = square2.notation;
+        } else {
+          // No pieces found - try using any piece as fallback
+          console.log('Popup: No pieces found on highlighted squares, using any available piece');
+          if (convertedPieces.length > 0) {
+            const firstPiece = convertedPieces[0].split(' ')[0];
+            movedPiece = firstPiece;
+            fromSquare = square1.notation;
+            toSquare = square2.notation;
+          }
+        }
+        
+        if (movedPiece) {
+          lastMoveInfo = `${movedPiece} ${fromSquare} ${toSquare}`;
+        } else {
+          lastMoveInfo = `? ${square1.notation} ${square2.notation}`;
+        }
         console.log('Popup: Last move detected:', lastMoveInfo);
       }
     } else if (rawData.lastMoveSquares && rawData.lastMoveSquares.length === 1) {
