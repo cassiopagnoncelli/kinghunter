@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>King Hunter</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏹 King Hunter</h1>
+            <p class="subtitle">Chess Extension</p>
+        </div>
+        
+        <div class="content">
+            <div class="status">
+                <span class="status-indicator inactive"></span>
+                <span id="status-text">Inactive</span>
+            </div>
+            
+            <div class="controls">
+                <button id="toggle-btn" class="primary-btn">
+                    Activate Hunter
+                </button>
+                
+                <button id="settings-btn" class="secondary-btn">
+                    ⚙️ Settings
+                </button>
+            </div>
+            
+            <div class="stats">
+                <div class="stat-item">
+                    <span class="stat-label">Kings Found:</span>
+                    <span id="kings-found" class="stat-value">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Games Analyzed:</span>
+                    <span id="games-analyzed" class="stat-value">0</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>Version 1.0.0</p>
+        </div>
+    </div>
+    
+    <script src="popup.js"></script>
+</body>
+</html>
