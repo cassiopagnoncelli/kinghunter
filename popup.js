@@ -1,140 +1,108 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // Get DOM elements
-    const toggleBtn = document.getElementById('toggle-btn');
-    const settingsBtn = document.getElementById('settings-btn');
-    const statusIndicator = document.querySelector('.status-indicator');
-    const statusText = document.getElementById('status-text');
-    const kingsFoundElement = document.getElementById('kings-found');
-    const gamesAnalyzedElement = document.getElementById('games-analyzed');
+  const statusEl = document.getElementById('status');
+  const dimensionsEl = document.getElementById('dimensions');
+  const extractBtn = document.getElementById('extractBtn');
 
-    // Initialize extension state
-    let isActive = false;
-    let kingsFound = 0;
-    let gamesAnalyzed = 0;
+  function updateStatus(message, type = 'info') {
+    statusEl.textContent = message;
+    statusEl.className = `status ${type}`;
+  }
 
-    // Load saved state from storage
-    loadExtensionState();
+  function showDimensions(width, height) {
+    dimensionsEl.textContent = `${width} × ${height}`;
+    dimensionsEl.style.display = 'block';
+  }
 
-    // Event listeners
-    toggleBtn.addEventListener('click', toggleExtension);
-    settingsBtn.addEventListener('click', openSettings);
+  function isLichessGamePage(url) {
+    // Check if URL matches https://lichess.org/[game_id] format
+    const lichessGamePattern = /^https:\/\/lichess\.org\/[a-zA-Z0-9]{8,12}(?:\/.*)?$/;
+    return lichessGamePattern.test(url);
+  }
 
-    // Load extension state from Chrome storage
-    async function loadExtensionState() {
-        try {
-            const result = await chrome.storage.sync.get({
-                isActive: false,
-                kingsFound: 0,
-                gamesAnalyzed: 0
-            });
-
-            isActive = result.isActive;
-            kingsFound = result.kingsFound;
-            gamesAnalyzed = result.gamesAnalyzed;
-
-            updateUI();
-        } catch (error) {
-            console.error('Error loading extension state:', error);
-        }
+  function extractDimensions(styleStr) {
+    if (!styleStr) return null;
+    
+    const widthMatch = styleStr.match(/width:\s*(\d+)px/);
+    const heightMatch = styleStr.match(/height:\s*(\d+)px/);
+    
+    if (widthMatch && heightMatch) {
+      return {
+        width: parseInt(widthMatch[1]),
+        height: parseInt(heightMatch[1])
+      };
     }
+    return null;
+  }
 
-    // Save extension state to Chrome storage
-    async function saveExtensionState() {
-        try {
-            await chrome.storage.sync.set({
-                isActive: isActive,
-                kingsFound: kingsFound,
-                gamesAnalyzed: gamesAnalyzed
-            });
-        } catch (error) {
-            console.error('Error saving extension state:', error);
+  extractBtn.addEventListener('click', async function() {
+    try {
+      extractBtn.disabled = true;
+      updateStatus('Checking page...', 'info');
+
+      // Get current tab
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      
+      if (!tab.url) {
+        updateStatus('Cannot access current page', 'error');
+        return;
+      }
+
+      // Check if it's a Lichess game page
+      if (!isLichessGamePage(tab.url)) {
+        updateStatus('Not a Lichess game page', 'error');
+        return;
+      }
+
+      updateStatus('Extracting board dimensions...', 'info');
+
+      // Inject script to find cg-container
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        function: () => {
+          const cgContainer = document.querySelector('cg-container');
+          if (!cgContainer) {
+            return { error: 'cg-container not found' };
+          }
+
+          const style = cgContainer.getAttribute('style');
+          if (!style) {
+            return { error: 'No style attribute found' };
+          }
+
+          return { style: style };
         }
+      });
+
+      const result = results[0].result;
+
+      if (result.error) {
+        updateStatus(result.error, 'error');
+        return;
+      }
+
+      const dimensions = extractDimensions(result.style);
+      
+      if (!dimensions) {
+        updateStatus('Could not extract width/height from style', 'error');
+        return;
+      }
+
+      updateStatus('Board dimensions extracted!', 'success');
+      showDimensions(dimensions.width, dimensions.height);
+
+    } catch (error) {
+      updateStatus(`Error: ${error.message}`, 'error');
+    } finally {
+      extractBtn.disabled = false;
     }
+  });
 
-    // Toggle extension active state
-    async function toggleExtension() {
-        isActive = !isActive;
-        
-        // Send message to content script
-        try {
-            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            
-            chrome.tabs.sendMessage(tab.id, {
-                action: 'toggleKingHunter',
-                isActive: isActive
-            });
-
-            // Send message to background script
-            chrome.runtime.sendMessage({
-                action: 'updateStatus',
-                isActive: isActive
-            });
-
-        } catch (error) {
-            console.error('Error sending toggle message:', error);
-        }
-
-        updateUI();
-        saveExtensionState();
+  // Auto-check when popup opens
+  chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+    if (tabs[0] && tabs[0].url && isLichessGamePage(tabs[0].url)) {
+      updateStatus('Lichess game page detected', 'success');
+    } else {
+      updateStatus('Not on a Lichess game page', 'error');
     }
-
-    // Update the UI based on current state
-    function updateUI() {
-        if (isActive) {
-            statusIndicator.classList.remove('inactive');
-            statusIndicator.classList.add('active');
-            statusText.textContent = 'Active';
-            toggleBtn.textContent = 'Deactivate Hunter';
-            toggleBtn.style.background = 'linear-gradient(135deg, #e53e3e 0%, #c53030 100%)';
-        } else {
-            statusIndicator.classList.remove('active');
-            statusIndicator.classList.add('inactive');
-            statusText.textContent = 'Inactive';
-            toggleBtn.textContent = 'Activate Hunter';
-            toggleBtn.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-        }
-
-        kingsFoundElement.textContent = kingsFound;
-        gamesAnalyzedElement.textContent = gamesAnalyzed;
-    }
-
-    // Open settings (placeholder functionality)
-    function openSettings() {
-        // For now, just show an alert
-        // In a full implementation, this could open an options page
-        alert('Settings functionality coming soon!\n\nKing Hunter v1.0.0');
-    }
-
-    // Listen for messages from content script or background script
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (message.action === 'updateStats') {
-            if (message.kingsFound !== undefined) {
-                kingsFound = message.kingsFound;
-            }
-            if (message.gamesAnalyzed !== undefined) {
-                gamesAnalyzed = message.gamesAnalyzed;
-            }
-            updateUI();
-            saveExtensionState();
-            sendResponse({ success: true });
-        }
-    });
-
-    // Update stats periodically
-    setInterval(async () => {
-        try {
-            const result = await chrome.storage.sync.get({
-                kingsFound: kingsFound,
-                gamesAnalyzed: gamesAnalyzed
-            });
-
-            if (result.kingsFound !== kingsFound || result.gamesAnalyzed !== gamesAnalyzed) {
-                kingsFound = result.kingsFound;
-                gamesAnalyzed = result.gamesAnalyzed;
-                updateUI();
-            }
-        } catch (error) {
-            console.error('Error updating stats:', error);
-        }
-    }, 2000);
+  });
 });

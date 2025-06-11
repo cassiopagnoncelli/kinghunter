@@ -1,51 +1,67 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>King Hunter</title>
-    <link rel="stylesheet" href="popup.css">
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 250px;
+      padding: 15px;
+      font-family: Arial, sans-serif;
+    }
+    .status {
+      margin-bottom: 10px;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .status.success {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .status.error {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    .status.info {
+      background-color: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+    .dimensions {
+      font-family: monospace;
+      font-size: 16px;
+      font-weight: bold;
+      text-align: center;
+      margin: 10px 0;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    button:disabled {
+      background-color: #6c757d;
+      cursor: not-allowed;
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🏹 King Hunter</h1>
-            <p class="subtitle">Chess Extension</p>
-        </div>
-        
-        <div class="content">
-            <div class="status">
-                <span class="status-indicator inactive"></span>
-                <span id="status-text">Inactive</span>
-            </div>
-            
-            <div class="controls">
-                <button id="toggle-btn" class="primary-btn">
-                    Activate Hunter
-                </button>
-                
-                <button id="settings-btn" class="secondary-btn">
-                    ⚙️ Settings
-                </button>
-            </div>
-            
-            <div class="stats">
-                <div class="stat-item">
-                    <span class="stat-label">Kings Found:</span>
-                    <span id="kings-found" class="stat-value">0</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">Games Analyzed:</span>
-                    <span id="games-analyzed" class="stat-value">0</span>
-                </div>
-            </div>
-        </div>
-        
-        <div class="footer">
-            <p>Version 1.0.0</p>
-        </div>
-    </div>
-    
-    <script src="popup.js"></script>
+  <div id="status" class="status info">
+    Click to extract board dimensions
+  </div>
+  <div id="dimensions" class="dimensions" style="display: none;"></div>
+  <button id="extractBtn">Extract Board Size</button>
+  
+  <script src="popup.js"></script>
 </body>
 </html>
