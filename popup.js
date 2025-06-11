@@ -13,6 +13,18 @@ document.addEventListener('DOMContentLoaded', function() {
     dimensionsEl.style.display = 'block';
   }
 
+  function showResults(width, height, pieces) {
+    dimensionsEl.innerHTML = `
+      <div><strong>Board Size:</strong> ${width} × ${height}</div>
+      <div><strong>Pieces (${pieces.length}):</strong></div>
+      <div style="max-height: 200px; overflow-y: auto; font-size: 12px; margin-top: 5px;">
+        ${pieces.map(piece => `<div>${piece}</div>`).join('')}
+      </div>
+    `;
+    dimensionsEl.style.display = 'block';
+  }
+
+
   function isLichessGamePage(url) {
     // Check if URL matches https://lichess.org/[game_id] format
     const lichessGamePattern = /^https:\/\/lichess\.org\/[a-zA-Z0-9]{8,12}(?:\/.*)?$/;
@@ -53,9 +65,9 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
       }
 
-      updateStatus('Extracting board dimensions...', 'info');
+      updateStatus('Extracting board data...', 'info');
 
-      // Inject script to find cg-container
+      // Inject script to find cg-container and pieces
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         function: () => {
@@ -69,7 +81,32 @@ document.addEventListener('DOMContentLoaded', function() {
             return { error: 'No style attribute found' };
           }
 
-          return { style: style };
+          // Find cg-board and extract pieces
+          const cgBoard = document.querySelector('cg-board');
+          const pieces = [];
+          
+          if (cgBoard) {
+            const pieceElements = cgBoard.querySelectorAll('piece');
+            pieceElements.forEach(piece => {
+              const classAttr = piece.getAttribute('class');
+              const styleAttr = piece.getAttribute('style');
+              
+              if (classAttr && styleAttr) {
+                // Extract translate values from transform
+                const translateMatch = styleAttr.match(/translate\((\d+)px,\s*(\d+)px\)/);
+                if (translateMatch) {
+                  const x = translateMatch[1];
+                  const y = translateMatch[2];
+                  pieces.push(`${classAttr} ${x} ${y}`);
+                }
+              }
+            });
+          }
+
+          return { 
+            style: style,
+            pieces: pieces
+          };
         }
       });
 
@@ -87,8 +124,8 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
       }
 
-      updateStatus('Board dimensions extracted!', 'success');
-      showDimensions(dimensions.width, dimensions.height);
+      updateStatus('Board data extracted!', 'success');
+      showResults(dimensions.width, dimensions.height, result.pieces);
 
     } catch (error) {
       updateStatus(`Error: ${error.message}`, 'error');

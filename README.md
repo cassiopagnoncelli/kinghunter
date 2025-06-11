@@ -1,13 +1,14 @@
 # Lichess Board Size Extractor
 
-A Chrome extension that extracts chessboard dimensions from Lichess game pages.
+A Chrome extension that extracts chessboard dimensions and piece positions from Lichess game pages.
 
 ## Features
 
 - **Page Detection**: Automatically detects if you're on a Lichess game page (format: `https://lichess.org/[game_id]`)
-- **Dynamic Extraction**: Searches the live DOM for `<cg-container>` elements
-- **Dimension Parsing**: Extracts width and height values from the style attribute in pixels
-- **Clean Output**: Displays just the numerical values (e.g., "512 × 512")
+- **Board Dimensions**: Searches the live DOM for `<cg-container>` elements and extracts width/height
+- **Piece Extraction**: Finds all `<piece>` elements within `<cg-board>` and extracts their positions
+- **Clean Output**: Displays board size and piece data in an organized format
+- **Real-time Data**: Works with the dynamic/live DOM as pieces move
 
 ## Installation
 
@@ -21,12 +22,12 @@ A Chrome extension that extracts chessboard dimensions from Lichess game pages.
 
 1. Navigate to any Lichess game page (e.g., `https://lichess.org/8bEV4PmYxIhw`)
 2. Click on the extension icon in your browser toolbar
-3. Click the "Extract Board Size" button
+3. Click the "Extract Board Data" button
 4. The extension will:
    - Verify you're on a valid Lichess game page
-   - Search for the `<cg-container>` element
-   - Extract width and height from its style attribute
-   - Display the dimensions (e.g., "512 × 512")
+   - Search for the `<cg-container>` element and extract board dimensions
+   - Find all `<piece>` elements in `<cg-board>` and extract their positions
+   - Display both board size and piece information
 
 ## How It Works
 
@@ -35,14 +36,22 @@ The extension consists of:
 - **Manifest**: Defines permissions and scripts
 - **Popup**: User interface for interaction
 - **Content Script**: Monitors Lichess pages for the chessboard container
-- **Background Logic**: Extracts dimensions using Chrome's scripting API
+- **Background Logic**: Extracts board and piece data using Chrome's scripting API
 
 The extension specifically looks for:
 ```html
 <cg-container style="width: 512px; height: 512px; ...">
+  <cg-board>
+    <piece class="black rook" style="transform: translate(420px, 420px);"></piece>
+    <piece class="white king" style="transform: translate(280px, 140px);"></piece>
+    <!-- ... more pieces -->
+  </cg-board>
+</cg-container>
 ```
 
-And extracts just the numerical values: `512 × 512`
+And extracts:
+- Board dimensions: `512 × 512`
+- Piece data: `["black rook 420 420", "white king 280 140", ...]`
 
 ## Supported URLs
 
