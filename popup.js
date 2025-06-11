@@ -13,12 +13,56 @@ document.addEventListener('DOMContentLoaded', function() {
     dimensionsEl.style.display = 'block';
   }
 
+  function convertPieceNotation(className) {
+    const pieceMap = {
+      'knight': 'n',
+      'pawn': 'p', 
+      'king': 'k',
+      'queen': 'q',
+      'rook': 'r',
+      'bishop': 'b'
+    };
+    
+    const parts = className.toLowerCase().split(' ');
+    const color = parts.includes('white') ? 'white' : 'black';
+    
+    let pieceType = '';
+    for (const part of parts) {
+      if (pieceMap[part]) {
+        pieceType = pieceMap[part];
+        break;
+      }
+    }
+    
+    // Uppercase for white, lowercase for black
+    return color === 'white' ? pieceType.toUpperCase() : pieceType;
+  }
+
   function showResults(width, height, pieces) {
+    const blockSize = width / 8;
+    
+    // Convert pixel coordinates to board coordinates (0-7) and piece notation
+    const convertedPieces = pieces.map(piece => {
+      const parts = piece.split(' ');
+      if (parts.length >= 4) {
+        const className = parts.slice(0, -2).join(' '); // Everything except last 2 numbers
+        const pixelX = parseInt(parts[parts.length - 2]);
+        const pixelY = parseInt(parts[parts.length - 1]);
+        
+        const boardX = Math.round(pixelX / blockSize);
+        const boardY = Math.round(pixelY / blockSize);
+        const pieceNotation = convertPieceNotation(className);
+        
+        return `${pieceNotation} ${boardX} ${boardY}`;
+      }
+      return piece;
+    });
+
     dimensionsEl.innerHTML = `
-      <div><strong>Board Size:</strong> ${width} × ${height}</div>
-      <div><strong>Pieces (${pieces.length}):</strong></div>
+      <div><strong>Board Size:</strong> ${width} × ${height} (Block Size: ${Math.round(blockSize)})</div>
+      <div><strong>Pieces (${convertedPieces.length}):</strong></div>
       <div style="max-height: 200px; overflow-y: auto; font-size: 12px; margin-top: 5px;">
-        ${pieces.map(piece => `<div>${piece}</div>`).join('')}
+        ${convertedPieces.map(piece => `<div>${piece}</div>`).join('')}
       </div>
     `;
     dimensionsEl.style.display = 'block';

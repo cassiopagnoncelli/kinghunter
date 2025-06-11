@@ -50,8 +50,17 @@ The extension specifically looks for:
 ```
 
 And extracts:
-- Board dimensions: `512 × 512`
-- Piece data: `["black rook 420 420", "white king 280 140", ...]`
+- Board dimensions: `512 × 512` (with calculated block size: 64)
+- Piece data in standard chess notation: `["r 0 7", "K 1 6", "p 3 4", ...]`
+
+**Coordinate & Notation Conversion:**
+The extension automatically converts pixel coordinates to chess board coordinates (0-7) and uses standard chess piece notation:
+- Calculates `block_size = width / 8`
+- Converts each piece position: `board_x = round(pixel_x / block_size)`
+- **Piece Notation**: 
+  - **White pieces** (uppercase): K=King, Q=Queen, R=Rook, B=Bishop, N=Knight, P=Pawn
+  - **Black pieces** (lowercase): k=king, q=queen, r=rook, b=bishop, n=knight, p=pawn
+- Results in standard chess coordinates from 0-7 for both x and y axes
 
 ## Supported URLs
 
