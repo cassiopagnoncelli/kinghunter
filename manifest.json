@@ -2,14 +2,18 @@
   "manifest_version": 3,
   "name": "Lichess Board Size Extractor",
   "version": "1.0",
-  "description": "Extract chessboard dimensions from Lichess game pages",
+  "description": "Extract chessboard dimensions from Lichess game pages with Stockfish analysis",
   "permissions": [
     "activeTab",
-    "scripting"
+    "scripting",
+    "storage"
   ],
   "host_permissions": [
     "https://lichess.org/*"
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_title": "Extract Board Size",
@@ -26,11 +30,25 @@
     "48": "icon48.png",
     "128": "icon128.png"
   },
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": ["https://lichess.org/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "stockfish.js",
+        "stockfish.wasm",
+        "stockfish.worker.js",
+        "stockfish-engine.js"
+      ],
+      "matches": ["<all_urls>"]
     }
   ]
 }

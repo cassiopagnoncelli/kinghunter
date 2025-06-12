@@ -1,10 +1,48 @@
 document.addEventListener('DOMContentLoaded', function() {
   const statusEl = document.getElementById('status');
   const dimensionsEl = document.getElementById('dimensions');
+  let currentBoardData = null;
+  let stockfishInitialized = false;
 
   function updateStatus(message, type = 'info') {
     statusEl.textContent = message;
     statusEl.className = `status ${type}`;
+  }
+
+  // Initialize Stockfish engine
+  async function initializeStockfish() {
+    if (stockfishInitialized) return;
+    
+    try {
+      console.log('Initializing Stockfish engine...');
+      await window.stockfishEngine.initialize();
+      stockfishInitialized = true;
+      console.log('Stockfish engine ready for analysis');
+    } catch (error) {
+      console.error('Failed to initialize Stockfish:', error);
+    }
+  }
+
+  // Analyze current position with Stockfish
+  async function analyzePosition(fen) {
+    if (!stockfishInitialized) {
+      await initializeStockfish();
+    }
+
+    if (!window.stockfishEngine.isEngineReady()) {
+      console.log('Engine not ready for analysis');
+      return null;
+    }
+
+    try {
+      console.log('Analyzing position with depth 22:', fen);
+      const analysis = await window.stockfishEngine.analyzePosition(fen, { depth: 22, time: 5000 });
+      console.log('Analysis result:', analysis);
+      return analysis;
+    } catch (error) {
+      console.error('Analysis failed:', error);
+      return null;
+    }
   }
 
   function showResults(boardData) {
@@ -14,9 +52,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     let copyButton = '';
+    let analyzeButton = '';
     if (boardData.full_fen) {
       copyButton = `
-        <div style="margin-bottom: 15px; text-align: center;">
+        <div style="margin-bottom: 10px; text-align: center;">
           <button id="copyFenButton" style="
             background: #4CAF50; 
             color: white; 
@@ -26,7 +65,21 @@ document.addEventListener('DOMContentLoaded', function() {
             cursor: pointer; 
             font-size: 12px;
             font-weight: bold;
+            margin-right: 5px;
           ">📋 Copy Full FEN</button>
+          <button id="analyzeButton" style="
+            background: #007bff; 
+            color: white; 
+            border: none; 
+            padding: 8px 16px; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            font-size: 12px;
+            font-weight: bold;
+          ">🧠 Analyze</button>
+        </div>
+        <div id="analysisResult" style="display: none; margin-bottom: 10px; padding: 8px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid #007bff;">
+          <div id="analysisContent"></div>
         </div>
       `;
     }
@@ -80,6 +133,9 @@ document.addEventListener('DOMContentLoaded', function() {
     `;
     dimensionsEl.style.display = 'block';
 
+    // Store current board data for analysis
+    currentBoardData = boardData;
+
     // Add copy button functionality
     if (boardData.full_fen) {
       const copyButton = document.getElementById('copyFenButton');
@@ -101,6 +157,96 @@ document.addEventListener('DOMContentLoaded', function() {
               copyButton.style.background = '#4CAF50';
             }, 1500);
             console.error('Failed to copy FEN:', err);
+          }
+        });
+      }
+
+      // Add analyze button functionality
+      const analyzeButton = document.getElementById('analyzeButton');
+      if (analyzeButton) {
+        analyzeButton.addEventListener('click', async () => {
+          const analysisResultDiv = document.getElementById('analysisResult');
+          const analysisContentDiv = document.getElementById('analysisContent');
+          
+          if (!analysisResultDiv || !analysisContentDiv) return;
+
+          try {
+            // Show loading state
+            analyzeButton.textContent = '🔄 Analyzing...';
+            analyzeButton.disabled = true;
+            analysisResultDiv.style.display = 'block';
+            analysisContentDiv.innerHTML = '<div style="color: #666;">Initializing Stockfish engine...</div>';
+
+            // Initialize Stockfish if needed
+            await initializeStockfish();
+            analysisContentDiv.innerHTML = '<div style="color: #666;">Analyzing position...</div>';
+
+            // Analyze the position using full FEN with depth 22
+            const analysis = await analyzePosition(boardData.full_fen);
+
+            if (analysis && analysis.analysis) {
+              const result = analysis.analysis;
+              
+              // Format evaluation
+              let evalText = '';
+              if (result.mate !== null) {
+                evalText = `Mate in ${Math.abs(result.mate)}`;
+                if (result.mate > 0) {
+                  evalText += ' for White';
+                } else {
+                  evalText += ' for Black';
+                }
+              } else if (result.score !== null) {
+                const score = result.score;
+                if (score > 0) {
+                  evalText = `+${score.toFixed(2)} (White advantage)`;
+                } else if (score < 0) {
+                  evalText = `${score.toFixed(2)} (Black advantage)`;
+                } else {
+                  evalText = '0.00 (Equal position)';
+                }
+              }
+
+              // Format best move
+              let bestMoveText = analysis.bestMove || 'None';
+              if (analysis.ponder) {
+                bestMoveText += ` (ponder: ${analysis.ponder})`;
+              }
+
+              // Format principal variation
+              let pvText = 'None';
+              if (result.pv && result.pv.length > 0) {
+                pvText = result.pv.slice(0, 5).join(' '); // Show first 5 moves
+                if (result.pv.length > 5) {
+                  pvText += '...';
+                }
+              }
+
+              analysisContentDiv.innerHTML = `
+                <div style="margin-bottom: 8px;">
+                  <strong>Evaluation:</strong> <span style="font-family: monospace; font-weight: bold;">${evalText}</span>
+                </div>
+                <div style="margin-bottom: 8px;">
+                  <strong>Best Move:</strong> <span style="font-family: monospace;">${bestMoveText}</span>
+                </div>
+                <div style="margin-bottom: 8px;">
+                  <strong>Principal Variation:</strong> <span style="font-family: monospace; font-size: 11px;">${pvText}</span>
+                </div>
+                <div style="font-size: 11px; color: #666;">
+                  Depth: ${result.depth || 'N/A'} | Nodes: ${result.nodes ? result.nodes.toLocaleString() : 'N/A'}
+                </div>
+              `;
+            } else {
+              analysisContentDiv.innerHTML = '<div style="color: #dc3545;">Analysis failed. Please try again.</div>';
+            }
+
+          } catch (error) {
+            console.error('Analysis error:', error);
+            analysisContentDiv.innerHTML = '<div style="color: #dc3545;">Analysis failed. Engine may not be ready.</div>';
+          } finally {
+            // Restore button state
+            analyzeButton.textContent = '🧠 Analyze';
+            analyzeButton.disabled = false;
           }
         });
       }
