@@ -23,6 +23,8 @@
   let black_king_rook_moved = false;
   let black_queen_rook_moved = false;
   let en_passant = '';
+  let move_number = 1;
+  let current_player = 'w'; // w for white, b for black
 
   // Check if current page is a Lichess game page
   function isLichessGamePage() {
@@ -230,6 +232,40 @@
     const file = String.fromCharCode(97 + boardX);
     const rank = boardY + 1;
     return `${file}${rank}`;
+  }
+
+  // Generate castling rights string for FEN
+  function generateCastlingRights() {
+    let castling = '';
+    
+    // White castling rights
+    if (!white_king_moved && !white_king_rook_moved) {
+      castling += 'K'; // White kingside
+    }
+    if (!white_king_moved && !white_queen_rook_moved) {
+      castling += 'Q'; // White queenside
+    }
+    
+    // Black castling rights
+    if (!black_king_moved && !black_king_rook_moved) {
+      castling += 'k'; // Black kingside
+    }
+    if (!black_king_moved && !black_queen_rook_moved) {
+      castling += 'q'; // Black queenside
+    }
+    
+    return castling || '-'; // Return '-' if no castling rights available
+  }
+
+  // Generate full FEN string
+  function generateFullFEN(fenPieces) {
+    const playerCode = current_player;
+    const castlingRights = generateCastlingRights();
+    const enPassantSquare = en_passant || '-';
+    const halfmoveClock = '0'; // Always 0 as requested
+    const fullmoveNumber = move_number;
+    
+    return `${fenPieces} ${playerCode} ${castlingRights} ${enPassantSquare} ${halfmoveClock} ${fullmoveNumber}`;
   }
 
   // Update castling rights and en passant based on last move
@@ -524,6 +560,17 @@
       // Update castling rights based on the new move
       updateCastlingRights(lastMoveInfo);
 
+      // Toggle current player and update move number
+      if (current_player === 'w') {
+        current_player = 'b';
+      } else {
+        current_player = 'w';
+        move_number++; // Increment full move number after black's move
+      }
+
+      // Generate full FEN string
+      const fullFEN = generateFullFEN(fenNotation);
+
       // Update stored values
       fen_last = fen_current;
       last_move_last = last_move_current;
@@ -537,6 +584,7 @@
         pieces: convertedPieces,
         last_move: lastMoveInfo,
         fen: fenNotation,
+        full_fen: fullFEN,
         timestamp: Date.now(),
         // Castling rights and en passant
         white_king_moved: white_king_moved,
@@ -545,7 +593,9 @@
         black_king_moved: black_king_moved,
         black_king_rook_moved: black_king_rook_moved,
         black_queen_rook_moved: black_queen_rook_moved,
-        en_passant: en_passant
+        en_passant: en_passant,
+        current_player: current_player,
+        move_number: move_number
       };
 
       // Notify popup of changes
@@ -625,6 +675,8 @@
     black_king_rook_moved = false;
     black_queen_rook_moved = false;
     en_passant = '';
+    move_number = 1;
+    current_player = 'w';
     
     // Reset tracking variables
     fen_last = null;

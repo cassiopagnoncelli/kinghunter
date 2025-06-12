@@ -13,6 +13,24 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
+    let copyButton = '';
+    if (boardData.full_fen) {
+      copyButton = `
+        <div style="margin-bottom: 15px; text-align: center;">
+          <button id="copyFenButton" style="
+            background: #4CAF50; 
+            color: white; 
+            border: none; 
+            padding: 8px 16px; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            font-size: 12px;
+            font-weight: bold;
+          ">📋 Copy Full FEN</button>
+        </div>
+      `;
+    }
+
     let lastMoveSection = `
       <div><strong>Last Move:</strong></div>
       <div style="font-family: monospace; font-size: 12px; margin: 5px 0; padding: 5px; background: #e8f4fd; border-radius: 3px;">
@@ -39,16 +57,54 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
     `;
 
+    let fullFenSection = '';
+    if (boardData.full_fen) {
+      fullFenSection = `
+        <div><strong>Full FEN:</strong></div>
+        <div style="font-family: monospace; font-size: 10px; word-break: break-all; margin: 5px 0; padding: 5px; background: #f0f8ff; border-radius: 3px;">
+          ${boardData.full_fen}
+        </div>
+      `;
+    }
+
     dimensionsEl.innerHTML = `
-      <div><strong>FEN:</strong></div>
+      ${copyButton}
+      <div><strong>FEN (Pieces Only):</strong></div>
       <div style="font-family: monospace; font-size: 11px; word-break: break-all; margin: 5px 0; padding: 5px; background: #f5f5f5; border-radius: 3px;">
         ${boardData.fen}
       </div>
+      ${fullFenSection}
       ${lastMoveSection}
       ${castlingSection}
       ${enPassantSection}
     `;
     dimensionsEl.style.display = 'block';
+
+    // Add copy button functionality
+    if (boardData.full_fen) {
+      const copyButton = document.getElementById('copyFenButton');
+      if (copyButton) {
+        copyButton.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(boardData.full_fen);
+            copyButton.textContent = '✅ Copied!';
+            copyButton.style.background = '#28a745';
+            setTimeout(() => {
+              copyButton.textContent = '📋 Copy Full FEN';
+              copyButton.style.background = '#4CAF50';
+            }, 1500);
+          } catch (err) {
+            copyButton.textContent = '❌ Failed';
+            copyButton.style.background = '#dc3545';
+            setTimeout(() => {
+              copyButton.textContent = '📋 Copy Full FEN';
+              copyButton.style.background = '#4CAF50';
+            }, 1500);
+            console.error('Failed to copy FEN:', err);
+          }
+        });
+      }
+    }
   }
 
   function isLichessGamePage(url) {
