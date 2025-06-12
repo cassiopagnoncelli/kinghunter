@@ -39,12 +39,48 @@ document.addEventListener('DOMContentLoaded', function() {
     if (stockfishInitialized) return;
     
     try {
-      console.log('Initializing Stockfish engine...');
+      console.log('=== STOCKFISH INITIALIZATION DEBUG ===');
+      console.log('window:', typeof window);
+      console.log('window.Stockfish:', typeof window.Stockfish);
+      console.log('window.stockfishEngine:', typeof window.stockfishEngine);
+      
+      // Check if scripts loaded
+      const scripts = document.querySelectorAll('script');
+      console.log('Loaded scripts:', Array.from(scripts).map(s => s.src));
+      
+      if (typeof window.stockfishEngine === 'undefined') {
+        console.error('StockfishEngine wrapper not available - checking script loading...');
+        
+        // Try to see if any of our scripts failed to load
+        const stockfishScript = Array.from(scripts).find(s => s.src.includes('stockfish.js'));
+        const engineScript = Array.from(scripts).find(s => s.src.includes('stockfish-engine.js'));
+        
+        console.log('Stockfish script found:', !!stockfishScript);
+        console.log('Engine script found:', !!engineScript);
+        
+        throw new Error('StockfishEngine wrapper not available - scripts may have failed to load');
+      }
+      
+      console.log('Calling stockfishEngine.initialize()...');
       await window.stockfishEngine.initialize();
       stockfishInitialized = true;
       console.log('Stockfish engine ready for analysis');
+      
+      // Verify engine status
+      const status = window.stockfishEngine.getStatus();
+      console.log('Engine status after initialization:', status);
+      
+      if (!status.isReady) {
+        throw new Error('Engine initialized but not ready');
+      }
+      
     } catch (error) {
-      console.error('Failed to initialize Stockfish:', error);
+      console.error('=== STOCKFISH INITIALIZATION FAILED ===');
+      console.error('Error type:', error.constructor.name);
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+      console.error('Current window globals:', Object.keys(window).filter(k => k.toLowerCase().includes('stock')));
+      throw error; // Re-throw to be handled by calling code
     }
   }
 
@@ -70,6 +106,22 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
+  // Test engine with simple FEN first
+  async function testEngine() {
+    try {
+      console.log('=== TESTING ENGINE WITH SIMPLE FEN ===');
+      const testFEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Starting position
+      console.log('Test FEN:', testFEN);
+      
+      const testAnalysis = await window.stockfishEngine.analyzePosition(testFEN, { depth: 10, time: 2000 });
+      console.log('Test analysis result:', testAnalysis);
+      return testAnalysis;
+    } catch (error) {
+      console.error('Engine test failed:', error);
+      return null;
+    }
+  }
+
   // Auto-analyze position when data is available
   async function autoAnalyze(boardData) {
     if (!boardData || !boardData.full_fen) return;
@@ -84,17 +136,40 @@ document.addEventListener('DOMContentLoaded', function() {
     if (analysisResultDiv && analysisContentDiv) {
       try {
         analysisResultDiv.style.display = 'block';
-        analysisContentDiv.innerHTML = '<div style="color: #666;">Analyzing position automatically...</div>';
+        analysisContentDiv.innerHTML = '<div style="color: #666;">Initializing Stockfish engine...</div>';
 
         // Initialize Stockfish if needed
+        console.log('=== AUTO-ANALYZE START ===');
+        console.log('Board FEN:', boardData.full_fen);
+        
         await initializeStockfish();
+        console.log('Engine initialized, testing with simple position first...');
+        
+        analysisContentDiv.innerHTML = '<div style="color: #666;">Testing engine...</div>';
+        
+        // Test engine first
+        const testResult = await testEngine();
+        if (!testResult) {
+          throw new Error('Engine test failed');
+        }
+        
+        console.log('Engine test passed, analyzing actual position...');
+        analysisContentDiv.innerHTML = '<div style="color: #666;">Analyzing position...</div>';
 
-        // Get depth from slider or use default
+        // Get depth from slider or use default (very conservative)
         const depthSlider = document.getElementById('depthSlider');
-        const selectedDepth = depthSlider ? parseInt(depthSlider.value) : 22;
+        const selectedDepth = Math.min(depthSlider ? parseInt(depthSlider.value) : 12, 12); // Very conservative depth
 
-        // Analyze the position using full FEN with selected depth
-        const analysis = await window.stockfishEngine.analyzePosition(boardData.full_fen, { depth: selectedDepth, time: 5000 });
+        console.log('Using depth:', selectedDepth);
+        console.log('Analyzing FEN:', boardData.full_fen);
+
+        // Analyze the position using full FEN with very conservative settings
+        const analysis = await window.stockfishEngine.analyzePosition(boardData.full_fen, { 
+          depth: selectedDepth, 
+          time: 3000 
+        });
+
+        console.log('Analysis complete:', analysis);
 
         if (analysis && analysis.analysis) {
           const result = analysis.analysis;
@@ -149,12 +224,29 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
           `;
         } else {
-          analysisContentDiv.innerHTML = '<div style="color: #dc3545;">Analysis failed. Please try again.</div>';
+          console.error('Analysis returned no results');
+          analysisContentDiv.innerHTML = '<div style="color: #dc3545;">Analysis failed. No results returned.</div>';
         }
 
       } catch (error) {
-        console.error('Auto-analysis error:', error);
-        analysisContentDiv.innerHTML = '<div style="color: #dc3545;">Analysis failed. Engine may not be ready.</div>';
+        console.error('=== AUTO-ANALYSIS ERROR ===');
+        console.error('Error type:', error.constructor.name);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+        console.error('Board data:', boardData);
+        
+        let errorMessage = 'Analysis failed. ';
+        if (error.message.includes('Invalid FEN')) {
+          errorMessage += 'Invalid board position detected.';
+        } else if (error.message.includes('memory access')) {
+          errorMessage += 'Engine memory error - try refreshing the page.';
+        } else if (error.message.includes('timeout')) {
+          errorMessage += 'Analysis timed out.';
+        } else {
+          errorMessage += `Error: ${error.message}`;
+        }
+        
+        analysisContentDiv.innerHTML = `<div style="color: #dc3545;">${errorMessage}</div>`;
       }
     }
   }

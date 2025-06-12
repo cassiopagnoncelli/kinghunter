@@ -44,8 +44,8 @@
     {
       "resources": [
         "stockfish.js",
-        "stockfish.wasm",
-        "stockfish.worker.js",
+        "stockfish-wrapper.js",
+        "stockfish-nnue-16-single.wasm",
         "stockfish-engine.js"
       ],
       "matches": ["<all_urls>"]
