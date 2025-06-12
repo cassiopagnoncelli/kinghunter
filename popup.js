@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const dimensionsEl = document.getElementById('dimensions');
   let currentBoardData = null;
   let stockfishInitialized = false;
+  let debug = false; // Set to true to show detailed board information
 
   function updateStatus(message, type = 'info') {
     statusEl.textContent = message;
@@ -51,85 +52,101 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
-    let copyButton = '';
+    // Analyze button (always visible)
     let analyzeButton = '';
     if (boardData.full_fen) {
-      copyButton = `
-        <div style="margin-bottom: 10px; text-align: center;">
-          <button id="copyFenButton" style="
-            background: #4CAF50; 
-            color: white; 
-            border: none; 
-            padding: 8px 16px; 
-            border-radius: 4px; 
-            cursor: pointer; 
-            font-size: 12px;
-            font-weight: bold;
-            margin-right: 5px;
-          ">📋 Copy Full FEN</button>
+      analyzeButton = `
+        <div style="margin-bottom: 15px; text-align: center;">
           <button id="analyzeButton" style="
             background: #007bff; 
             color: white; 
             border: none; 
-            padding: 8px 16px; 
+            padding: 10px 20px; 
             border-radius: 4px; 
             cursor: pointer; 
-            font-size: 12px;
+            font-size: 14px;
             font-weight: bold;
-          ">🧠 Analyze</button>
+          ">🧠 Analyze Position</button>
         </div>
-        <div id="analysisResult" style="display: none; margin-bottom: 10px; padding: 8px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid #007bff;">
+        <div id="analysisResult" style="display: none; margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid #007bff;">
           <div id="analysisContent"></div>
         </div>
       `;
     }
 
-    let lastMoveSection = `
-      <div><strong>Last Move:</strong></div>
-      <div style="font-family: monospace; font-size: 12px; margin: 5px 0; padding: 5px; background: #e8f4fd; border-radius: 3px;">
-        ${boardData.last_move || 'No last move detected'}
-      </div>
-    `;
+    // Debug sections (only visible if debug is true)
+    let debugSections = '';
+    if (debug) {
+      let copyButton = '';
+      if (boardData.full_fen) {
+        copyButton = `
+          <div style="margin-bottom: 10px; text-align: center;">
+            <button id="copyFenButton" style="
+              background: #4CAF50; 
+              color: white; 
+              border: none; 
+              padding: 8px 16px; 
+              border-radius: 4px; 
+              cursor: pointer; 
+              font-size: 12px;
+              font-weight: bold;
+            ">📋 Copy Full FEN</button>
+          </div>
+        `;
+      }
 
-    let castlingSection = `
-      <div><strong>Castling Rights:</strong></div>
-      <div style="font-family: monospace; font-size: 11px; margin: 5px 0; padding: 5px; background: #f0f8ff; border-radius: 3px;">
-        <div>White King Moved: ${boardData.white_king_moved || false}</div>
-        <div>White King Rook Moved: ${boardData.white_king_rook_moved || false}</div>
-        <div>White Queen Rook Moved: ${boardData.white_queen_rook_moved || false}</div>
-        <div>Black King Moved: ${boardData.black_king_moved || false}</div>
-        <div>Black King Rook Moved: ${boardData.black_king_rook_moved || false}</div>
-        <div>Black Queen Rook Moved: ${boardData.black_queen_rook_moved || false}</div>
-      </div>
-    `;
-
-    let enPassantSection = `
-      <div><strong>En Passant:</strong></div>
-      <div style="font-family: monospace; font-size: 12px; margin: 5px 0; padding: 5px; background: #fff8dc; border-radius: 3px;">
-        ${boardData.en_passant || 'None'}
-      </div>
-    `;
-
-    let fullFenSection = '';
-    if (boardData.full_fen) {
-      fullFenSection = `
-        <div><strong>Full FEN:</strong></div>
-        <div style="font-family: monospace; font-size: 10px; word-break: break-all; margin: 5px 0; padding: 5px; background: #f0f8ff; border-radius: 3px;">
-          ${boardData.full_fen}
+      let lastMoveSection = `
+        <div><strong>Last Move:</strong></div>
+        <div style="font-family: monospace; font-size: 12px; margin: 5px 0; padding: 5px; background: #e8f4fd; border-radius: 3px;">
+          ${boardData.last_move || 'No last move detected'}
         </div>
+      `;
+
+      let castlingSection = `
+        <div><strong>Castling Rights:</strong></div>
+        <div style="font-family: monospace; font-size: 11px; margin: 5px 0; padding: 5px; background: #f0f8ff; border-radius: 3px;">
+          <div>White King Moved: ${boardData.white_king_moved || false}</div>
+          <div>White King Rook Moved: ${boardData.white_king_rook_moved || false}</div>
+          <div>White Queen Rook Moved: ${boardData.white_queen_rook_moved || false}</div>
+          <div>Black King Moved: ${boardData.black_king_moved || false}</div>
+          <div>Black King Rook Moved: ${boardData.black_king_rook_moved || false}</div>
+          <div>Black Queen Rook Moved: ${boardData.black_queen_rook_moved || false}</div>
+        </div>
+      `;
+
+      let enPassantSection = `
+        <div><strong>En Passant:</strong></div>
+        <div style="font-family: monospace; font-size: 12px; margin: 5px 0; padding: 5px; background: #fff8dc; border-radius: 3px;">
+          ${boardData.en_passant || 'None'}
+        </div>
+      `;
+
+      let fullFenSection = '';
+      if (boardData.full_fen) {
+        fullFenSection = `
+          <div><strong>Full FEN:</strong></div>
+          <div style="font-family: monospace; font-size: 10px; word-break: break-all; margin: 5px 0; padding: 5px; background: #f0f8ff; border-radius: 3px;">
+            ${boardData.full_fen}
+          </div>
+        `;
+      }
+
+      debugSections = `
+        ${copyButton}
+        <div><strong>FEN (Pieces Only):</strong></div>
+        <div style="font-family: monospace; font-size: 11px; word-break: break-all; margin: 5px 0; padding: 5px; background: #f5f5f5; border-radius: 3px;">
+          ${boardData.fen}
+        </div>
+        ${fullFenSection}
+        ${lastMoveSection}
+        ${castlingSection}
+        ${enPassantSection}
       `;
     }
 
     dimensionsEl.innerHTML = `
-      ${copyButton}
-      <div><strong>FEN (Pieces Only):</strong></div>
-      <div style="font-family: monospace; font-size: 11px; word-break: break-all; margin: 5px 0; padding: 5px; background: #f5f5f5; border-radius: 3px;">
-        ${boardData.fen}
-      </div>
-      ${fullFenSection}
-      ${lastMoveSection}
-      ${castlingSection}
-      ${enPassantSection}
+      ${analyzeButton}
+      ${debugSections}
     `;
     dimensionsEl.style.display = 'block';
 
@@ -245,7 +262,7 @@ document.addEventListener('DOMContentLoaded', function() {
             analysisContentDiv.innerHTML = '<div style="color: #dc3545;">Analysis failed. Engine may not be ready.</div>';
           } finally {
             // Restore button state
-            analyzeButton.textContent = '🧠 Analyze';
+            analyzeButton.textContent = '🧠 Analyze Position';
             analyzeButton.disabled = false;
           }
         });
