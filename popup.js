@@ -20,16 +20,33 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
     `;
 
+    let castlingSection = `
+      <div><strong>Castling Rights:</strong></div>
+      <div style="font-family: monospace; font-size: 11px; margin: 5px 0; padding: 5px; background: #f0f8ff; border-radius: 3px;">
+        <div>White King Moved: ${boardData.white_king_moved || false}</div>
+        <div>White King Rook Moved: ${boardData.white_king_rook_moved || false}</div>
+        <div>White Queen Rook Moved: ${boardData.white_queen_rook_moved || false}</div>
+        <div>Black King Moved: ${boardData.black_king_moved || false}</div>
+        <div>Black King Rook Moved: ${boardData.black_king_rook_moved || false}</div>
+        <div>Black Queen Rook Moved: ${boardData.black_queen_rook_moved || false}</div>
+      </div>
+    `;
+
+    let enPassantSection = `
+      <div><strong>En Passant:</strong></div>
+      <div style="font-family: monospace; font-size: 12px; margin: 5px 0; padding: 5px; background: #fff8dc; border-radius: 3px;">
+        ${boardData.en_passant || 'None'}
+      </div>
+    `;
+
     dimensionsEl.innerHTML = `
       <div><strong>FEN:</strong></div>
       <div style="font-family: monospace; font-size: 11px; word-break: break-all; margin: 5px 0; padding: 5px; background: #f5f5f5; border-radius: 3px;">
         ${boardData.fen}
       </div>
       ${lastMoveSection}
-      <div><strong>Pieces (${boardData.pieces.length}):</strong></div>
-      <div style="max-height: 150px; overflow-y: auto; font-size: 12px; margin-top: 5px;">
-        ${boardData.pieces.map(piece => `<div>${piece}</div>`).join('')}
-      </div>
+      ${castlingSection}
+      ${enPassantSection}
     `;
     dimensionsEl.style.display = 'block';
   }
@@ -216,26 +233,23 @@ document.addEventListener('DOMContentLoaded', function() {
     let boardX = Math.round(pixelX / blockSize);
     let boardY = Math.round(pixelY / blockSize);
     
-    // Files (columns) are already correct, no horizontal flip needed
+    console.log(`Popup: Converting pixel(${pixelX},${pixelY}) for ${boardColor} player`);
+    console.log(`Popup: Initial board coordinates: (${boardX},${boardY})`);
     
-    // Ranks (rows): Lichess uses Y=0 at top, but chess notation has rank 1 at bottom
-    // So we need to flip Y coordinates to get correct ranks
-    boardY = 7 - boardY;
-    
-    // Additional adjustment for board orientation
-    if (boardColor === 'black') {
-      // When playing as black, flip again to correct orientation
+    if (boardColor === 'white') {
+      // For white: top-left = a8, bottom-right = h1
+      // pixelY=0 is rank 8, pixelY=7 is rank 1
       boardY = 7 - boardY;
+      console.log(`Popup: WHITE - Applied Y flip: (${boardX},${boardY})`);
+    } else if (boardColor === 'black') {
+      // For black: Remove horizontal inversion - use coordinates as-is
+      // Keep both X and Y coordinates as they are for black
+      console.log(`Popup: BLACK - No inversion applied: (${boardX},${boardY})`);
+    } else {
+      console.log(`Popup: UNKNOWN board color: ${boardColor}`);
     }
     
     return { boardX, boardY };
-  }
-
-  // Convert board coordinates to chess notation
-  function boardCoordinatesToChessNotation(boardX, boardY) {
-    const file = String.fromCharCode(97 + boardX); // 97 is 'a'
-    const rank = boardY + 1;
-    return `${file}${rank}`;
   }
 
   // Process raw board data (similar to content script)

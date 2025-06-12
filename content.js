@@ -14,6 +14,15 @@
   let fen_current = null;
   let last_move_last = null;
   let last_move_current = null;
+  
+  // Track castling rights and en passant
+  let white_king_moved = false;
+  let white_king_rook_moved = false;
+  let white_queen_rook_moved = false;
+  let black_king_moved = false;
+  let black_king_rook_moved = false;
+  let black_queen_rook_moved = false;
+  let en_passant = '';
 
   // Check if current page is a Lichess game page
   function isLichessGamePage() {
@@ -194,10 +203,20 @@
     let boardX = Math.round(pixelX / blockSize);
     let boardY = Math.round(pixelY / blockSize);
     
-    boardY = 7 - boardY;
+    console.log(`Lichess Board Size Extractor: Converting pixel(${pixelX},${pixelY}) for ${boardColor} player`);
+    console.log(`Lichess Board Size Extractor: Initial board coordinates: (${boardX},${boardY})`);
     
-    if (boardColor === 'black') {
+    if (boardColor === 'white') {
+      // For white: top-left = a8, bottom-right = h1
+      // pixelY=0 is rank 8, pixelY=7 is rank 1
       boardY = 7 - boardY;
+      console.log(`Lichess Board Size Extractor: WHITE - Applied Y flip: (${boardX},${boardY})`);
+    } else if (boardColor === 'black') {
+      // For black: Remove horizontal inversion - use coordinates as-is
+      // Keep both X and Y coordinates as they are for black
+      console.log(`Lichess Board Size Extractor: BLACK - No inversion applied: (${boardX},${boardY})`);
+    } else {
+      console.log(`Lichess Board Size Extractor: UNKNOWN board color: ${boardColor}`);
     }
     
     return { boardX, boardY };
@@ -384,7 +403,15 @@
         pieces: convertedPieces,
         last_move: lastMoveInfo,
         fen: fenNotation,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        // Castling rights and en passant
+        white_king_moved: white_king_moved,
+        white_king_rook_moved: white_king_rook_moved,
+        white_queen_rook_moved: white_queen_rook_moved,
+        black_king_moved: black_king_moved,
+        black_king_rook_moved: black_king_rook_moved,
+        black_queen_rook_moved: black_queen_rook_moved,
+        en_passant: en_passant
       };
 
       // Notify popup of changes
@@ -454,6 +481,24 @@
     }
   }
 
+  // Initialize castling rights and en passant variables
+  function initializeGameVariables() {
+    console.log('Lichess Board Size Extractor: Initializing game variables');
+    white_king_moved = false;
+    white_king_rook_moved = false;
+    white_queen_rook_moved = false;
+    black_king_moved = false;
+    black_king_rook_moved = false;
+    black_queen_rook_moved = false;
+    en_passant = '';
+    
+    // Reset tracking variables
+    fen_last = null;
+    fen_current = null;
+    last_move_last = null;
+    last_move_current = null;
+  }
+
   // Initialize
   function initialize() {
     console.log('Lichess Board Size Extractor: ========== INITIALIZE CALLED ==========');
@@ -462,6 +507,9 @@
     
     if (isLichessGamePage()) {
       console.log('Lichess Board Size Extractor: Game page detected - STARTING POLLING');
+      
+      // Initialize game variables for new page
+      initializeGameVariables();
       
       // Wait a bit for the board to load, then start polling
       setTimeout(() => {
