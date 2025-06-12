@@ -8,6 +8,12 @@
   let current_tree = null;
   let pollingInterval = null;
   let currentBoardData = null;
+  
+  // Track FEN and Last Move changes
+  let fen_last = null;
+  let fen_current = null;
+  let last_move_last = null;
+  let last_move_current = null;
 
   // Check if current page is a Lichess game page
   function isLichessGamePage() {
@@ -204,8 +210,8 @@
     return `${file}${rank}`;
   }
 
-  // Update board data for the popup using virtual DOM tree
-  function updateBoardData(virtualTree = null) {
+  // Process board data and track FEN/LastMove changes
+  function processBoardData(virtualTree = null) {
     // Use current_tree if no tree provided
     const tree = virtualTree || current_tree;
     if (!tree) {
@@ -223,7 +229,7 @@
     const dimensions = extractDimensions(style);
     if (!dimensions) return;
 
-    console.log('Lichess Board Size Extractor: Parsing from virtual DOM tree - pieces:', tree.pieces.length, 'squares:', tree.squares.length);
+    console.log('Lichess Board Size Extractor: Processing virtual DOM tree - pieces:', tree.pieces.length, 'squares:', tree.squares.length);
 
     const pieces = [];
     const lastMoveSquares = [];
@@ -355,48 +361,64 @@
 
     const fenNotation = convertToFEN(convertedPieces);
 
-    currentBoardData = {
-      width: dimensions.width,
-      height: dimensions.height,
-      blockSize: Math.round(blockSize),
-      color: color,
-      pieces: convertedPieces,
-      last_move: lastMoveInfo,
-      fen: fenNotation,
-      timestamp: Date.now()
-    };
+    // Update current FEN and Last Move
+    fen_current = fenNotation;
+    last_move_current = lastMoveInfo;
 
-    console.log('Lichess Board Size Extractor: Updated board data - FEN:', fenNotation.substring(0, 20) + '...', 'Last Move:', lastMoveInfo);
+    // Only update frontend if FEN changed
+    if (fen_current !== fen_last) {
+      console.log('Lichess Board Size Extractor: FEN CHANGED - Updating frontend');
+      console.log('FEN changed from:', fen_last, 'to:', fen_current);
+      console.log('Last Move changed from:', last_move_last, 'to:', last_move_current);
 
-    // Notify popup
-    try {
-      chrome.runtime.sendMessage({
-        type: 'BOARD_DATA_UPDATED',
-        data: currentBoardData
-      }).catch(() => {
-        // Popup might not be open, ignore error
-      });
-    } catch (error) {
-      // Extension context might be invalid, ignore
+      // Update stored values
+      fen_last = fen_current;
+      last_move_last = last_move_current;
+
+      // Update current board data
+      currentBoardData = {
+        width: dimensions.width,
+        height: dimensions.height,
+        blockSize: Math.round(blockSize),
+        color: color,
+        pieces: convertedPieces,
+        last_move: lastMoveInfo,
+        fen: fenNotation,
+        timestamp: Date.now()
+      };
+
+      // Notify popup of changes
+      try {
+        chrome.runtime.sendMessage({
+          type: 'BOARD_DATA_UPDATED',
+          data: currentBoardData
+        }).catch(() => {
+          // Popup might not be open, ignore error
+        });
+      } catch (error) {
+        // Extension context might be invalid, ignore
+      }
+    } else {
+      console.log('Lichess Board Size Extractor: FEN unchanged - No frontend update needed');
     }
   }
 
-  // Main polling function that updates FEN and Last Move every 250ms
+  // Main polling function that only processes when virtual DOM changes
   function poll() {
     console.log('Lichess Board Size Extractor: Polling for changes...');
     
     // Capture current state
     current_tree = captureCurrentTree();
     
-    // Always update board data from current tree (FEN and Last Move every 250ms)
-    if (current_tree) {
-      updateBoardData(current_tree);
-      console.log('Lichess Board Size Extractor: Updated FEN and Last Move from current tree');
-    }
-    
-    // Check if trees are different for move detection
+    // Only process board data when virtual DOM changes
     if (treesAreDifferent(current_tree, previous_tree)) {
-      console.log('Lichess Board Size Extractor: Trees are different!');
+      console.log('Lichess Board Size Extractor: Trees are different - Processing board data!');
+      
+      // Process board data only when changes detected
+      if (current_tree) {
+        processBoardData(current_tree);
+        console.log('Lichess Board Size Extractor: Processed board data due to virtual DOM change');
+      }
       
       // Copy current to previous
       previous_tree = copyTree(current_tree);
@@ -404,7 +426,7 @@
       // Trigger new move event
       new_move_event();
     } else {
-      console.log('Lichess Board Size Extractor: No changes detected');
+      console.log('Lichess Board Size Extractor: No changes detected - No processing needed');
     }
   }
 
