@@ -616,8 +616,6 @@
 
   // Main polling function that only processes when virtual DOM changes
   function poll() {
-    console.log('Lichess Board Size Extractor: Polling for changes...');
-    
     // Capture current state
     current_tree = captureCurrentTree();
     
@@ -636,8 +634,6 @@
       
       // Trigger new move event
       new_move_event();
-    } else {
-      console.log('Lichess Board Size Extractor: No changes detected - No processing needed');
     }
   }
 
@@ -720,6 +716,10 @@
     if (request.type === 'GET_BOARD_DATA') {
       console.log('Lichess Board Size Extractor: Sending current data', currentBoardData);
       sendResponse({ data: currentBoardData });
+    } else if (request.type === 'TRIGGER_ANIMATION') {
+      console.log('ANIMATION: Received animation trigger for:', request.sourceSquare, 'to', request.destinationSquare);
+      animateMove(request.sourceSquare, request.destinationSquare);
+      sendResponse({ success: true });
     }
   }
 
@@ -752,5 +752,109 @@
     childList: true,
     subtree: true
   });
+
+  // ANIMATION: Standalone function - completely separate from main algorithm
+  function animateMove(sourceSquare, destinationSquare) {
+    const cgBoard = document.querySelector('cg-board');
+    if (!cgBoard) return;
+
+    const cgContainer = document.querySelector('cg-container');
+    if (!cgContainer) return;
+
+    // Get board dimensions
+    const style = cgContainer.getAttribute('style');
+    const widthMatch = style?.match(/width:\s*(\d+)px/);
+    if (!widthMatch) return;
+
+    const boardWidth = parseInt(widthMatch[1]);
+    const blockSize = boardWidth / 8;
+
+    // Get board orientation
+    let boardColor = 'white';
+    const coordsElement = document.querySelector('coords');
+    if (coordsElement?.getAttribute('class') === 'files black') {
+      boardColor = 'black';
+    }
+
+    // Convert chess notation to pixel coordinates
+    function toPixel(square) {
+      if (!square || square.length !== 2) return null;
+      
+      const file = square.charCodeAt(0) - 97; // a=0, b=1, etc.
+      const rank = parseInt(square[1]) - 1;   // 1=0, 2=1, etc.
+      
+      if (file < 0 || file > 7 || rank < 0 || rank > 7) return null;
+      
+      let pixelX, pixelY;
+      
+      if (boardColor === 'white') {
+        pixelX = file * blockSize;
+        pixelY = (7 - rank) * blockSize;
+      } else {
+        pixelX = (7 - file) * blockSize;
+        pixelY = rank * blockSize;
+      }
+      
+      return { pixelX, pixelY };
+    }
+
+    // Find piece at square
+    function findPiece(square) {
+      const expectedPixels = toPixel(square);
+      if (!expectedPixels) return null;
+      
+      const pieceElements = cgBoard.querySelectorAll('piece');
+      for (const piece of pieceElements) {
+        const styleAttr = piece.getAttribute('style');
+        const translateMatch = styleAttr?.match(/translate\((\d+)px,\s*(\d+)px\)/);
+        
+        if (translateMatch) {
+          const pieceX = parseInt(translateMatch[1]);
+          const pieceY = parseInt(translateMatch[2]);
+          
+          if (Math.abs(pieceX - expectedPixels.pixelX) < 5 && Math.abs(pieceY - expectedPixels.pixelY) < 5) {
+            return piece.getAttribute('class');
+          }
+        }
+      }
+      return null;
+    }
+
+    const sourcePixels = toPixel(sourceSquare);
+    const destPixels = toPixel(destinationSquare);
+    
+    if (!sourcePixels || !destPixels) return;
+
+    const movingPieceClass = findPiece(sourceSquare);
+    if (!movingPieceClass) return;
+
+    // Create source square highlight (60% green)
+    const sourceHighlight = document.createElement('div');
+    sourceHighlight.style.cssText = `position:absolute;width:${blockSize}px;height:${blockSize}px;background-color:rgba(0,255,0,0.6);transform:translate(${sourcePixels.pixelX}px,${sourcePixels.pixelY}px);pointer-events:none;z-index:100;transition:opacity 300ms`;
+    cgBoard.appendChild(sourceHighlight);
+    
+    // Create destination square highlight (30% green)  
+    const destHighlight = document.createElement('div');
+    destHighlight.style.cssText = `position:absolute;width:${blockSize}px;height:${blockSize}px;background-color:rgba(0,255,0,0.3);transform:translate(${destPixels.pixelX}px,${destPixels.pixelY}px);pointer-events:none;z-index:100;transition:opacity 300ms`;
+    cgBoard.appendChild(destHighlight);
+    
+    // Create moving piece
+    const tempPiece = document.createElement('piece');
+    tempPiece.className = movingPieceClass;
+    tempPiece.style.cssText = `transform:translate(${sourcePixels.pixelX}px,${sourcePixels.pixelY}px);transition:transform 300ms ease-out;z-index:200;pointer-events:none`;
+    cgBoard.appendChild(tempPiece);
+    
+    // Start animation
+    setTimeout(() => {
+      tempPiece.style.transform = `translate(${destPixels.pixelX}px,${destPixels.pixelY}px)`;
+    }, 10);
+    
+    // Cleanup after 300ms
+    setTimeout(() => {
+      [sourceHighlight, destHighlight, tempPiece].forEach(el => {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      });
+    }, 320);
+  }
 
 })();

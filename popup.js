@@ -223,6 +223,11 @@ document.addEventListener('DOMContentLoaded', function() {
               Depth: ${result.depth || 'N/A'} | Nodes: ${result.nodes ? result.nodes.toLocaleString() : 'N/A'}
             </div>
           `;
+
+          // ANIMATION: Trigger animation for best move
+          if (analysis.bestMove && analysis.bestMove !== 'None' && analysis.bestMove.length >= 4) {
+            triggerMoveAnimation(analysis.bestMove);
+          }
         } else {
           console.error('Analysis returned no results');
           analysisContentDiv.innerHTML = '<div style="color: #dc3545;">Analysis failed. No results returned.</div>';
@@ -255,6 +260,29 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!boardData) {
       dimensionsEl.style.display = 'none';
       return;
+    }
+
+    // FEN display at the top (always visible if FEN exists)
+    let fenSection = '';
+    if (boardData.full_fen) {
+      fenSection = `
+        <div style="margin-bottom: 10px; padding: 8px; background: #f8f9fa; border-radius: 4px; border: 1px solid #e9ecef; display: flex; align-items: center; gap: 8px;">
+          <div style="flex: 1; font-family: monospace; font-size: 10px; word-break: break-all; color: #495057; line-height: 1.2;">
+            ${boardData.full_fen}
+          </div>
+          <button id="copyFenButton" style="
+            background: #6c757d; 
+            color: white; 
+            border: none; 
+            padding: 4px 8px; 
+            border-radius: 3px; 
+            cursor: pointer; 
+            font-size: 10px;
+            white-space: nowrap;
+            flex-shrink: 0;
+          ">📋 Copy</button>
+        </div>
+      `;
     }
 
     // Depth slider and analyze button (always visible)
@@ -369,6 +397,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     dimensionsEl.innerHTML = `
+      ${fenSection}
       ${analyzeSection}
       ${debugSections}
     `;
@@ -376,6 +405,32 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Store current board data for analysis
     currentBoardData = boardData;
+
+    // Add FEN copy button functionality (main FEN display)
+    if (boardData.full_fen) {
+      const copyFenButton = document.getElementById('copyFenButton');
+      if (copyFenButton) {
+        copyFenButton.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(boardData.full_fen);
+            copyFenButton.textContent = '✅';
+            copyFenButton.style.background = '#28a745';
+            setTimeout(() => {
+              copyFenButton.textContent = '📋 Copy';
+              copyFenButton.style.background = '#6c757d';
+            }, 1500);
+          } catch (err) {
+            copyFenButton.textContent = '❌';
+            copyFenButton.style.background = '#dc3545';
+            setTimeout(() => {
+              copyFenButton.textContent = '📋 Copy';
+              copyFenButton.style.background = '#6c757d';
+            }, 1500);
+            console.error('Failed to copy FEN:', err);
+          }
+        });
+      }
+    }
 
     // Add copy button functionality (only if debug mode)
     if (debug && boardData.full_fen) {
@@ -495,6 +550,11 @@ document.addEventListener('DOMContentLoaded', function() {
                   Depth: ${result.depth || 'N/A'} | Nodes: ${result.nodes ? result.nodes.toLocaleString() : 'N/A'}
                 </div>
               `;
+
+              // ANIMATION: Trigger animation for best move (manual analysis)
+              if (analysis.bestMove && analysis.bestMove !== 'None' && analysis.bestMove.length >= 4) {
+                triggerMoveAnimation(analysis.bestMove);
+              }
             } else {
               analysisContentDiv.innerHTML = '<div style="color: #dc3545;">Analysis failed. Please try again.</div>';
             }
@@ -923,6 +983,37 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     return fenRanks.join('/');
+  }
+
+  // ANIMATION: Trigger move animation in content script
+  async function triggerMoveAnimation(bestMove) {
+    console.log('ANIMATION: Triggering move animation for best move:', bestMove);
+    
+    if (!bestMove || bestMove.length !== 4) {
+      console.log('ANIMATION: Invalid best move format:', bestMove);
+      return;
+    }
+    
+    const sourceSquare = bestMove.substring(0, 2);
+    const destinationSquare = bestMove.substring(2, 4);
+    
+    console.log(`ANIMATION: Parsed move - from: ${sourceSquare}, to: ${destinationSquare}`);
+    
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      
+      // Send message to content script to trigger animation
+      await chrome.tabs.sendMessage(tab.id, {
+        type: 'TRIGGER_ANIMATION',
+        sourceSquare: sourceSquare,
+        destinationSquare: destinationSquare
+      });
+      
+      console.log('ANIMATION: Animation message sent successfully');
+      
+    } catch (error) {
+      console.error('ANIMATION: Failed to send animation message:', error);
+    }
   }
 
   // Listen for board data updates from content script
