@@ -232,11 +232,14 @@
     return `${file}${rank}`;
   }
 
-  // Update castling rights based on last move
+  // Update castling rights and en passant based on last move
   function updateCastlingRights(lastMove) {
     if (!lastMove) return;
     
-    console.log('Lichess Board Size Extractor: Checking castling rights for move:', lastMove);
+    console.log('Lichess Board Size Extractor: Checking castling rights and en passant for move:', lastMove);
+    
+    // Clear en passant first (it's only valid for one move)
+    en_passant = '';
     
     // Handle castling moves first
     if (lastMove === 'O-O') {
@@ -279,6 +282,18 @@
     const fromSquare = parts[1];
     const toSquare = parts[2];
     
+    // Check for en passant conditions - any pawn jumping two squares
+    if (piece === 'P' || piece === 'p') {
+      const fromRank = parseInt(fromSquare[1]);
+      const toRank = parseInt(toSquare[1]);
+      
+      // Check for any two-square pawn jump: 2->4 (white) or 7->5 (black)
+      if ((fromRank === 2 && toRank === 4) || (fromRank === 7 && toRank === 5)) {
+        en_passant = toSquare; // Current square where the pawn is now located
+        console.log(`Lichess Board Size Extractor: Pawn ${piece} jumped ${fromRank}->${toRank}, subject to en passant at:`, en_passant);
+      }
+    }
+    
     // Track white king moves
     if (piece === 'K') {
       if (!white_king_moved) {
@@ -289,13 +304,13 @@
     
     // Track white rook moves
     if (piece === 'R') {
-      if (fromSquare === 'a1' && !white_king_rook_moved) {
-        white_king_rook_moved = true;
-        console.log('Lichess Board Size Extractor: White king rook moved from a1 - queenside castling lost');
-      }
-      if (fromSquare === 'h1' && !white_queen_rook_moved) {
+      if (fromSquare === 'a1' && !white_queen_rook_moved) {
         white_queen_rook_moved = true;
-        console.log('Lichess Board Size Extractor: White queen rook moved from h1 - kingside castling lost');
+        console.log('Lichess Board Size Extractor: White queen rook moved from a1 - queenside castling lost');
+      }
+      if (fromSquare === 'h1' && !white_king_rook_moved) {
+        white_king_rook_moved = true;
+        console.log('Lichess Board Size Extractor: White king rook moved from h1 - kingside castling lost');
       }
     }
     
@@ -309,12 +324,12 @@
     
     // Track black rook moves
     if (piece === 'r') {
-      if (fromSquare === 'a8' && !black_king_rook_moved) {
-        black_king_rook_moved = true;
-        console.log('Lichess Board Size Extractor: Black king rook moved from a8 - queenside castling lost');
-      }
-      if (fromSquare === 'h8' && !black_queen_rook_moved) {
+      if (fromSquare === 'a8' && !black_queen_rook_moved) {
         black_queen_rook_moved = true;
+        console.log('Lichess Board Size Extractor: Black queen rook moved from a8 - queenside castling lost');
+      }
+      if (fromSquare === 'h8' && !black_king_rook_moved) {
+        black_king_rook_moved = true;
         console.log('Lichess Board Size Extractor: Black queen rook moved from h8 - kingside castling lost');
       }
     }
