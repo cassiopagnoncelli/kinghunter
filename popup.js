@@ -4,10 +4,34 @@ document.addEventListener('DOMContentLoaded', function() {
   let currentBoardData = null;
   let stockfishInitialized = false;
   let debug = false; // Set to true to show detailed board information
+  let savedDepth = 22; // Default depth
 
   function updateStatus(message, type = 'info') {
     statusEl.textContent = message;
     statusEl.className = `status ${type}`;
+  }
+
+  // Load saved depth from storage
+  async function loadSavedDepth() {
+    try {
+      const result = await chrome.storage.sync.get(['analysisDepth']);
+      if (result.analysisDepth && result.analysisDepth >= 15 && result.analysisDepth <= 23) {
+        savedDepth = result.analysisDepth;
+        console.log('Loaded saved depth:', savedDepth);
+      }
+    } catch (error) {
+      console.error('Error loading saved depth:', error);
+    }
+  }
+
+  // Save depth to storage
+  async function saveDepth(depth) {
+    try {
+      await chrome.storage.sync.set({ analysisDepth: depth });
+      console.log('Saved depth:', depth);
+    } catch (error) {
+      console.error('Error saving depth:', error);
+    }
   }
 
   // Initialize Stockfish engine
@@ -65,8 +89,12 @@ document.addEventListener('DOMContentLoaded', function() {
         // Initialize Stockfish if needed
         await initializeStockfish();
 
-        // Analyze the position using full FEN with depth 22
-        const analysis = await analyzePosition(boardData.full_fen);
+        // Get depth from slider or use default
+        const depthSlider = document.getElementById('depthSlider');
+        const selectedDepth = depthSlider ? parseInt(depthSlider.value) : 22;
+
+        // Analyze the position using full FEN with selected depth
+        const analysis = await window.stockfishEngine.analyzePosition(boardData.full_fen, { depth: selectedDepth, time: 5000 });
 
         if (analysis && analysis.analysis) {
           const result = analysis.analysis;
@@ -137,21 +165,40 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
-    // Analyze button (always visible)
-    let analyzeButton = '';
+    // Depth slider and analyze button (always visible)
+    let analyzeSection = '';
     if (boardData.full_fen) {
-      analyzeButton = `
-        <div style="margin-bottom: 15px; text-align: center;">
-          <button id="analyzeButton" style="
-            background: #007bff; 
-            color: white; 
-            border: none; 
-            padding: 10px 20px; 
-            border-radius: 4px; 
-            cursor: pointer; 
-            font-size: 14px;
-            font-weight: bold;
-          ">🧠 Analyze Position</button>
+      analyzeSection = `
+        <div style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px; border: 1px solid #e9ecef;">
+          <div style="margin-bottom: 10px; text-align: center;">
+            <label for="depthSlider" style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 12px; color: #495057;">
+              Analysis Depth: <span id="depthValue">${savedDepth}</span>
+            </label>
+            <input type="range" id="depthSlider" min="15" max="23" value="${savedDepth}" style="
+              width: 100%; 
+              height: 6px; 
+              border-radius: 3px; 
+              background: #dee2e6; 
+              outline: none; 
+              cursor: pointer;
+            ">
+            <div style="display: flex; justify-content: space-between; font-size: 10px; color: #6c757d; margin-top: 2px;">
+              <span>15</span>
+              <span>23</span>
+            </div>
+          </div>
+          <div style="text-align: center;">
+            <button id="analyzeButton" style="
+              background: #007bff; 
+              color: white; 
+              border: none; 
+              padding: 10px 20px; 
+              border-radius: 4px; 
+              cursor: pointer; 
+              font-size: 14px;
+              font-weight: bold;
+            ">🧠 Analyze Position</button>
+          </div>
         </div>
         <div id="analysisResult" style="display: none; margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid #007bff;">
           <div id="analysisContent"></div>
@@ -230,7 +277,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     dimensionsEl.innerHTML = `
-      ${analyzeButton}
+      ${analyzeSection}
       ${debugSections}
     `;
     dimensionsEl.style.display = 'block';
@@ -264,6 +311,18 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     }
 
+    // Add depth slider functionality
+    const depthSlider = document.getElementById('depthSlider');
+    const depthValue = document.getElementById('depthValue');
+    if (depthSlider && depthValue) {
+      depthSlider.addEventListener('input', (e) => {
+        const newDepth = parseInt(e.target.value);
+        depthValue.textContent = newDepth;
+        savedDepth = newDepth;
+        saveDepth(newDepth); // Save to storage
+      });
+    }
+
     // Add analyze button functionality
     if (boardData.full_fen) {
       const analyzeButton = document.getElementById('analyzeButton');
@@ -285,8 +344,12 @@ document.addEventListener('DOMContentLoaded', function() {
             await initializeStockfish();
             analysisContentDiv.innerHTML = '<div style="color: #666;">Analyzing position...</div>';
 
-            // Analyze the position using full FEN with depth 22
-            const analysis = await analyzePosition(boardData.full_fen);
+            // Get depth from slider
+            const selectedDepth = depthSlider ? parseInt(depthSlider.value) : 22;
+            console.log('Using analysis depth:', selectedDepth);
+
+            // Analyze the position using full FEN with selected depth
+            const analysis = await window.stockfishEngine.analyzePosition(boardData.full_fen, { depth: selectedDepth, time: 5000 });
 
             if (analysis && analysis.analysis) {
               const result = analysis.analysis;
@@ -778,13 +841,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  // Auto-check when popup opens
-  chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
-    if (tabs[0] && tabs[0].url && isLichessGamePage(tabs[0].url)) {
-      updateStatus('Lichess game page detected', 'success');
-      requestBoardData();
-    } else {
-      updateStatus('Not on a Lichess game page', 'error');
-    }
+  // Load saved depth first, then auto-check when popup opens
+  loadSavedDepth().then(() => {
+    chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+      if (tabs[0] && tabs[0].url && isLichessGamePage(tabs[0].url)) {
+        updateStatus('Lichess game page detected', 'success');
+        requestBoardData();
+      } else {
+        updateStatus('Not on a Lichess game page', 'error');
+      }
+    });
   });
 });
