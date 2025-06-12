@@ -46,6 +46,91 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
+  // Auto-analyze position when data is available
+  async function autoAnalyze(boardData) {
+    if (!boardData || !boardData.full_fen) return;
+
+    // Hide status when auto-analyzing
+    statusEl.style.display = 'none';
+
+    // Automatically trigger analysis
+    const analysisResultDiv = document.getElementById('analysisResult');
+    const analysisContentDiv = document.getElementById('analysisContent');
+    
+    if (analysisResultDiv && analysisContentDiv) {
+      try {
+        analysisResultDiv.style.display = 'block';
+        analysisContentDiv.innerHTML = '<div style="color: #666;">Analyzing position automatically...</div>';
+
+        // Initialize Stockfish if needed
+        await initializeStockfish();
+
+        // Analyze the position using full FEN with depth 22
+        const analysis = await analyzePosition(boardData.full_fen);
+
+        if (analysis && analysis.analysis) {
+          const result = analysis.analysis;
+          
+          // Format evaluation
+          let evalText = '';
+          if (result.mate !== null) {
+            evalText = `Mate in ${Math.abs(result.mate)}`;
+            if (result.mate > 0) {
+              evalText += ' for White';
+            } else {
+              evalText += ' for Black';
+            }
+          } else if (result.score !== null) {
+            const score = result.score;
+            if (score > 0) {
+              evalText = `+${score.toFixed(2)} (White advantage)`;
+            } else if (score < 0) {
+              evalText = `${score.toFixed(2)} (Black advantage)`;
+            } else {
+              evalText = '0.00 (Equal position)';
+            }
+          }
+
+          // Format best move
+          let bestMoveText = analysis.bestMove || 'None';
+          if (analysis.ponder) {
+            bestMoveText += ` (ponder: ${analysis.ponder})`;
+          }
+
+          // Format principal variation
+          let pvText = 'None';
+          if (result.pv && result.pv.length > 0) {
+            pvText = result.pv.slice(0, 5).join(' '); // Show first 5 moves
+            if (result.pv.length > 5) {
+              pvText += '...';
+            }
+          }
+
+          analysisContentDiv.innerHTML = `
+            <div style="margin-bottom: 8px;">
+              <strong>Evaluation:</strong> <span style="font-family: monospace; font-weight: bold;">${evalText}</span>
+            </div>
+            <div style="margin-bottom: 8px;">
+              <strong>Best Move:</strong> <span style="font-family: monospace;">${bestMoveText}</span>
+            </div>
+            <div style="margin-bottom: 8px;">
+              <strong>Principal Variation:</strong> <span style="font-family: monospace; font-size: 11px;">${pvText}</span>
+            </div>
+            <div style="font-size: 11px; color: #666;">
+              Depth: ${result.depth || 'N/A'} | Nodes: ${result.nodes ? result.nodes.toLocaleString() : 'N/A'}
+            </div>
+          `;
+        } else {
+          analysisContentDiv.innerHTML = '<div style="color: #dc3545;">Analysis failed. Please try again.</div>';
+        }
+
+      } catch (error) {
+        console.error('Auto-analysis error:', error);
+        analysisContentDiv.innerHTML = '<div style="color: #dc3545;">Analysis failed. Engine may not be ready.</div>';
+      }
+    }
+  }
+
   function showResults(boardData) {
     if (!boardData) {
       dimensionsEl.style.display = 'none';
@@ -153,8 +238,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Store current board data for analysis
     currentBoardData = boardData;
 
-    // Add copy button functionality
-    if (boardData.full_fen) {
+    // Add copy button functionality (only if debug mode)
+    if (debug && boardData.full_fen) {
       const copyButton = document.getElementById('copyFenButton');
       if (copyButton) {
         copyButton.addEventListener('click', async () => {
@@ -177,8 +262,10 @@ document.addEventListener('DOMContentLoaded', function() {
           }
         });
       }
+    }
 
-      // Add analyze button functionality
+    // Add analyze button functionality
+    if (boardData.full_fen) {
       const analyzeButton = document.getElementById('analyzeButton');
       if (analyzeButton) {
         analyzeButton.addEventListener('click', async () => {
@@ -268,6 +355,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
       }
     }
+
+    // Auto-analyze the position
+    autoAnalyze(boardData);
   }
 
   function isLichessGamePage(url) {
@@ -300,7 +390,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const response = await chrome.tabs.sendMessage(tab.id, { type: 'GET_BOARD_DATA' });
         
         if (response && response.data) {
-          updateStatus('Ready', 'success');
           showResults(response.data);
         } else {
           updateStatus('Loading...', 'info');
@@ -438,7 +527,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
       // Process the data (similar to the content script)
       const boardData = processBoardData(result);
-      updateStatus('Ready', 'success');
       showResults(boardData);
 
     } catch (error) {
@@ -686,7 +774,6 @@ document.addEventListener('DOMContentLoaded', function() {
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.type === 'BOARD_DATA_UPDATED') {
       console.log('Popup: Received board data update', request.data);
-      updateStatus('Ready', 'success');
       showResults(request.data);
     }
   });
