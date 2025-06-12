@@ -232,6 +232,94 @@
     return `${file}${rank}`;
   }
 
+  // Update castling rights based on last move
+  function updateCastlingRights(lastMove) {
+    if (!lastMove) return;
+    
+    console.log('Lichess Board Size Extractor: Checking castling rights for move:', lastMove);
+    
+    // Handle castling moves first
+    if (lastMove === 'O-O') {
+      // Kingside castling - determine color by checking which king still has rights
+      if (!white_king_moved) {
+        // White kingside castling
+        white_king_moved = true;
+        white_king_rook_moved = true;
+        console.log('Lichess Board Size Extractor: White kingside castling - all white castling rights lost');
+      } else if (!black_king_moved) {
+        // Black kingside castling
+        black_king_moved = true;
+        black_king_rook_moved = true;
+        console.log('Lichess Board Size Extractor: Black kingside castling - all black castling rights lost');
+      }
+      return;
+    }
+    
+    if (lastMove === 'O-O-O') {
+      // Queenside castling - determine color by checking which king still has rights
+      if (!white_king_moved) {
+        // White queenside castling
+        white_king_moved = true;
+        white_queen_rook_moved = true;
+        console.log('Lichess Board Size Extractor: White queenside castling - all white castling rights lost');
+      } else if (!black_king_moved) {
+        // Black queenside castling
+        black_king_moved = true;
+        black_queen_rook_moved = true;
+        console.log('Lichess Board Size Extractor: Black queenside castling - all black castling rights lost');
+      }
+      return;
+    }
+    
+    // Parse the move format: "piece fromSquare toSquare" (e.g., "K e1 g1")
+    const parts = lastMove.split(' ');
+    if (parts.length !== 3) return;
+    
+    const piece = parts[0];
+    const fromSquare = parts[1];
+    const toSquare = parts[2];
+    
+    // Track white king moves
+    if (piece === 'K') {
+      if (!white_king_moved) {
+        white_king_moved = true;
+        console.log('Lichess Board Size Extractor: White king moved - castling rights lost');
+      }
+    }
+    
+    // Track white rook moves
+    if (piece === 'R') {
+      if (fromSquare === 'a1' && !white_king_rook_moved) {
+        white_king_rook_moved = true;
+        console.log('Lichess Board Size Extractor: White king rook moved from a1 - queenside castling lost');
+      }
+      if (fromSquare === 'h1' && !white_queen_rook_moved) {
+        white_queen_rook_moved = true;
+        console.log('Lichess Board Size Extractor: White queen rook moved from h1 - kingside castling lost');
+      }
+    }
+    
+    // Track black king moves
+    if (piece === 'k') {
+      if (!black_king_moved) {
+        black_king_moved = true;
+        console.log('Lichess Board Size Extractor: Black king moved - castling rights lost');
+      }
+    }
+    
+    // Track black rook moves
+    if (piece === 'r') {
+      if (fromSquare === 'a8' && !black_king_rook_moved) {
+        black_king_rook_moved = true;
+        console.log('Lichess Board Size Extractor: Black king rook moved from a8 - queenside castling lost');
+      }
+      if (fromSquare === 'h8' && !black_queen_rook_moved) {
+        black_queen_rook_moved = true;
+        console.log('Lichess Board Size Extractor: Black queen rook moved from h8 - kingside castling lost');
+      }
+    }
+  }
+
   // Process board data and track FEN/LastMove changes
   function processBoardData(virtualTree = null) {
     // Use current_tree if no tree provided
@@ -373,6 +461,31 @@
           movedPiece = piece2;
           fromSquare = square1.notation;
           toSquare = square2.notation;
+        } else if (!piece1 && !piece2) {
+          // No piece found on either square - this could be castling
+          const sq1 = square1.notation;
+          const sq2 = square2.notation;
+          
+          // Check for castling patterns
+          if ((sq1 === 'e1' && sq2 === 'g1') || (sq2 === 'e1' && sq1 === 'g1') ||
+              (sq1 === 'e1' && sq2 === 'h1') || (sq2 === 'e1' && sq1 === 'h1')) {
+            // White kingside castling
+            lastMoveInfo = 'O-O';
+            console.log('Lichess Board Size Extractor: Detected white kingside castling');
+          } else if ((sq1 === 'e1' && sq2 === 'c1') || (sq2 === 'e1' && sq1 === 'c1')) {
+            // White queenside castling
+            lastMoveInfo = 'O-O-O';
+            console.log('Lichess Board Size Extractor: Detected white queenside castling');
+          } else if ((sq1 === 'e8' && sq2 === 'g8') || (sq2 === 'e8' && sq1 === 'g8') ||
+                     (sq1 === 'e8' && sq2 === 'h8') || (sq2 === 'e8' && sq1 === 'h8')) {
+            // Black kingside castling
+            lastMoveInfo = 'O-O';
+            console.log('Lichess Board Size Extractor: Detected black kingside castling');
+          } else if ((sq1 === 'e8' && sq2 === 'c8') || (sq2 === 'e8' && sq1 === 'c8')) {
+            // Black queenside castling
+            lastMoveInfo = 'O-O-O';
+            console.log('Lichess Board Size Extractor: Detected black queenside castling');
+          }
         }
         
         if (movedPiece) {
@@ -392,6 +505,9 @@
       console.log('Lichess Board Size Extractor: FEN CHANGED - Updating frontend');
       console.log('FEN changed from:', fen_last, 'to:', fen_current);
       console.log('Last Move changed from:', last_move_last, 'to:', last_move_current);
+
+      // Update castling rights based on the new move
+      updateCastlingRights(lastMoveInfo);
 
       // Update stored values
       fen_last = fen_current;
