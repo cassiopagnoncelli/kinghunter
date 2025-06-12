@@ -150,7 +150,10 @@
         const y = parseInt(parts[2]);
         
         if (x >= 0 && x <= 7 && y >= 0 && y <= 7) {
-          board[y][x] = piece;
+          // MIRROR HORIZONTALLY: a->h, b->g, c->f, d->e for ALL pieces
+          const mirroredX = 7 - x;
+          console.log(`Lichess Board Size Extractor: Mirroring piece ${piece} from (${x},${y}) to (${mirroredX},${y})`);
+          board[y][mirroredX] = piece;
         }
       }
     });

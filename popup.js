@@ -252,6 +252,13 @@ document.addEventListener('DOMContentLoaded', function() {
     return { boardX, boardY };
   }
 
+  // Convert board coordinates to chess notation
+  function boardCoordinatesToChessNotation(boardX, boardY) {
+    const file = String.fromCharCode(97 + boardX);
+    const rank = boardY + 1;
+    return `${file}${rank}`;
+  }
+
   // Process raw board data (similar to content script)
   function processBoardData(rawData) {
     const blockSize = rawData.width / 8;
@@ -421,7 +428,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const y = parseInt(parts[2]);
         
         if (x >= 0 && x <= 7 && y >= 0 && y <= 7) {
-          board[y][x] = piece;
+          // MIRROR HORIZONTALLY: a->h, b->g, c->f, d->e for ALL pieces
+          const mirroredX = 7 - x;
+          console.log(`Popup: Mirroring piece ${piece} from (${x},${y}) to (${mirroredX},${y})`);
+          board[y][mirroredX] = piece;
         }
       }
     });
