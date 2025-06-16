@@ -262,25 +262,21 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
-    // FEN display at the top (always visible if FEN exists)
+    // FEN copy button at the top (always visible if FEN exists)
     let fenSection = '';
     if (boardData.full_fen) {
       fenSection = `
-        <div style="margin-bottom: 10px; padding: 8px; background: #f8f9fa; border-radius: 4px; border: 1px solid #e9ecef; display: flex; align-items: center; gap: 8px;">
-          <div style="flex: 1; font-family: monospace; font-size: 10px; word-break: break-all; color: #495057; line-height: 1.2;">
-            ${boardData.full_fen}
-          </div>
+        <div style="margin-bottom: 10px; text-align: center;">
           <button id="copyFenButton" style="
             background: #6c757d; 
             color: white; 
             border: none; 
-            padding: 4px 8px; 
-            border-radius: 3px; 
+            padding: 8px 16px; 
+            border-radius: 4px; 
             cursor: pointer; 
-            font-size: 10px;
-            white-space: nowrap;
-            flex-shrink: 0;
-          ">📋 Copy</button>
+            font-size: 12px;
+            font-weight: bold;
+          ">📋 Copy FEN</button>
         </div>
       `;
     }
