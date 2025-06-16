@@ -661,6 +661,50 @@
     }
   }
 
+  // Detect whose turn it is from Lichess interface
+  function detectCurrentPlayer() {
+    // Try to find turn indicator in Lichess interface
+    const turnElement = document.querySelector('.rclock-turn, .clock-turn, .turn, [class*="turn"]');
+    if (turnElement) {
+      const turnClass = turnElement.getAttribute('class');
+      if (turnClass && turnClass.includes('white')) {
+        return 'w';
+      } else if (turnClass && turnClass.includes('black')) {
+        return 'b';
+      }
+    }
+    
+    // Try alternative selectors for turn indicators
+    const clockElements = document.querySelectorAll('[class*="clock"]');
+    for (const clock of clockElements) {
+      const clockClass = clock.getAttribute('class');
+      if (clockClass && clockClass.includes('active')) {
+        if (clockClass.includes('white')) {
+          return 'w';
+        } else if (clockClass.includes('black')) {
+          return 'b';
+        }
+      }
+    }
+    
+    // Try to find move indicator in the move list
+    const moveList = document.querySelector('.moves, .pgn-moves, [class*="moves"]');
+    if (moveList) {
+      const moves = moveList.querySelectorAll('[class*="move"], .move');
+      // If odd number of moves, it's black's turn; if even, it's white's turn
+      // (assuming white moves first)
+      if (moves.length % 2 === 0) {
+        return 'w'; // Even number of moves = white's turn
+      } else {
+        return 'b'; // Odd number of moves = black's turn
+      }
+    }
+    
+    // Default to white's turn if we can't detect
+    console.log('Lichess Board Size Extractor: Could not detect current player, defaulting to white');
+    return 'w';
+  }
+
   // Initialize castling rights and en passant variables
   function initializeGameVariables() {
     console.log('Lichess Board Size Extractor: Initializing game variables');
@@ -672,7 +716,10 @@
     black_queen_rook_moved = false;
     en_passant = '';
     move_number = 1;
-    current_player = 'w';
+    
+    // Detect whose actual turn it is from the game interface
+    current_player = detectCurrentPlayer();
+    console.log('Lichess Board Size Extractor: Detected current player:', current_player);
     
     // Reset tracking variables
     fen_last = null;

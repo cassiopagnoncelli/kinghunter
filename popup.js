@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', function() {
   let currentBoardData = null;
   let stockfishInitialized = false;
   let debug = false; // Set to true to show detailed board information
+  const DEBUG = true; // ENV variable - set to true to show debug box
   let savedDepth = 22; // Default depth
 
   function updateStatus(message, type = 'info') {
@@ -322,6 +323,39 @@ document.addEventListener('DOMContentLoaded', function() {
       `;
     }
 
+    // DEBUG box (only visible if DEBUG is true)
+    let debugBox = '';
+    if (DEBUG && boardData) {
+      debugBox = `
+        <div style="margin-bottom: 15px; padding: 10px; background: #fff3cd; border-radius: 4px; border: 1px solid #ffeaa7; border-left: 4px solid #f39c12;">
+          <div style="margin-bottom: 8px; font-weight: bold; color: #856404; text-align: center;">🐛 DEBUG INFO</div>
+          <div style="font-family: monospace; font-size: 11px;">
+            <div style="margin-bottom: 4px;">
+              <strong>Current Player Turn:</strong> <span style="color: ${boardData.current_player === 'w' ? '#28a745' : '#dc3545'};">${boardData.current_player === 'w' ? 'White (w)' : 'Black (b)'}</span>
+            </div>
+            <div style="margin-bottom: 4px;">
+              <strong>Board Orientation:</strong> <span style="color: ${boardData.color === 'white' ? '#28a745' : '#dc3545'};">${boardData.color === 'white' ? 'White (bottom)' : 'Black (bottom)'}</span>
+            </div>
+            <div style="margin-bottom: 4px;">
+              <strong>Castling Rights:</strong> 
+              <span style="color: #495057;">
+                ${boardData.white_king_moved ? '❌' : '✅'}K 
+                ${boardData.white_queen_rook_moved ? '❌' : '✅'}Q 
+                ${boardData.black_king_moved ? '❌' : '✅'}k 
+                ${boardData.black_queen_rook_moved ? '❌' : '✅'}q
+              </span>
+            </div>
+            <div style="margin-bottom: 4px;">
+              <strong>En Passant:</strong> <span style="color: ${boardData.en_passant ? '#17a2b8' : '#6c757d'};">${boardData.en_passant || 'None'}</span>
+            </div>
+            <div style="margin-bottom: 4px;">
+              <strong>Move Number:</strong> <span style="color: #495057;">${boardData.move_number || 1}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     // Debug sections (only visible if debug is true)
     let debugSections = '';
     if (debug) {
@@ -394,6 +428,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     dimensionsEl.innerHTML = `
       ${fenSection}
+      ${debugBox}
       ${analyzeSection}
       ${debugSections}
     `;
